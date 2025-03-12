@@ -115,7 +115,7 @@ for model_name in model_names:
 
         task_config = TaskConfig(
             token=hf_token,
-            cache_dir="../../hf-cache/",
+            cache_dir="../hf-cache/",
             task_name=task_name,
             model_name=model_name,
             device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),

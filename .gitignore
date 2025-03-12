@@ -6,3 +6,6 @@ external/
 runs/
 src/wandb/
 nbs-private/
+assets/
+plots/
+hf-cache/

@@ -24,7 +24,7 @@ Run the following script to download and cache the datasets
 ```python
 from datasets import load_dataset
 
-cache_directory = "../../hf-cache/"
+cache_directory = "../hf-cache/"
 datasets = {
     "sujet-ai/Sujet-Finance-Instruct-177k": "finance-instrunct.hf",
     "ucirvine/sms_spam": "sms_spam",

@@ -75,6 +75,7 @@ transformers
 datasets
 huggingface_hub
 accelerate
+wandb
 ```
 
 ## Getting started

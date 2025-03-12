@@ -1,11 +1,11 @@
 <br/><br/>
 <p align="center">
-  <img width="250" src="logo.png">
+  <img width="300" src="logo.png">
 <h3 align="center"><b>Inference-time Steering for Language Models</b></h3>
 <p align="center">PyTorch</p>
 <br/><br/>
 
-This repository contains the code and experiments for the paper **["To Steer or Not to Steer? Mechanistic Error Reduction with Abstention for Language Models"]([Link](https://openreview.net/pdf?id=ukLxqA8zXj))**.
+This repository contains the code and experiments for the paper **["To Steer or Not to Steer? Mechanistic Error Reduction with Abstention for Language Models"]([Link](https://openreview.net/pdf?id=ukLxqA8zXj))** by Hedström et al., (2025).
 
 [![Getting started!](https://colab.research.google.com/assets/colab-badge.svg)](anonymous)
 ![Python version](https://img.shields.io/badge/python-3.7%20%7C%203.8%20%7C%203.9%20%7C%203.10%20%7C%203.11-blue.svg)
@@ -15,7 +15,7 @@ This repository contains the code and experiments for the paper **["To Steer or 
 <!--[![Launch Tutorials](https://mybinder.org/badge_logo.svg)](anonymous)-->
 
 Please note that this repository is under active development!
-
+<!--
 ## Citation
 
 If you find this work interesting or useful in your research, use the following Bibtex annotation to cite us:
@@ -29,7 +29,7 @@ If you find this work interesting or useful in your research, use the following 
     url={},
 }
 ```
-
+-->
 <!--This work has been published ...........-->
 
 ## Repository overview
@@ -37,25 +37,30 @@ If you find this work interesting or useful in your research, use the following 
 The repository is organised as follows:
 - The `src/` folder contains all necessary functions.
 - The `nbs/` folder includes notebooks for generating the plots in the paper and for benchmarking experiments.
-- The `assets/` folder contains all files to reproduce the experiments.
 - The `tests/` folder contains the tests.
+<!--- The `assets/` folder contains all files to reproduce the experiments.-->
 
 ## Paper highlights 📚
 
 Our approach consists of three main steps. First, we use linear probes to obtain an effective direction for minimising the predicted error. Second, this direction is then scaled using the closed-form solution at both the token and layer levels. Third, we calibrate the steering threshold against the true error on the calibration dataset, informed by the user's tolerance for uncertainty.
 </p>
 <p align="center">
-  <img width="800" src="summary.png"> 
+  <img width="750" src="summary.png"> 
 </p>
+
+The main benefits of MERA includes:
+- **Selective steering** — at token position and layer-level, we steer only if p̂(h) > α
+- **Adaptive strength** — intervention scales with the predicted error￼λ ∝ p̂(h)
+- **Global abstention** — steer only if when confident, such that performance is at least ε with probability 1-δ
 
 ## Installation
 
-Install the necessary packages using the provided [requirements.txt](https://link_to_repo):
+Install the necessary packages using the provided [requirements.txt](https://github.com/annahedstroem/MERA-steering/blob/main/requirements.txt):
 
 ```bash
 conda init
 pip install -r requirements.txt
-pip install -e llm-error-steering/external/SAELens/.
+pip install -e git+https://github.com/jbloomAus/SAELens.git#egg=SAELens
 pip install transformers datasets accelerate huggingface_hub
 ```
 
@@ -68,9 +73,8 @@ python>=3.10.1
 torch>=2.0.0
 transformers
 datasets
-torch
 huggingface_hub
-accelerate>=0.26.0
+accelerate
 ```
 
 ## Getting started
@@ -95,11 +99,11 @@ cd src
 
 Step 1. For each model, to prepare datasets for probe training (see supported datasets and models [here](#supported-models-and-datasets)) run the following script 
 ```bash
-python -m cache.cache_run --task_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --nr_samples 3000 --model_name meta-llama/Llama-3.2-1B-Instruct --hf_token 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 // INSERT_KEY
+python -m cache.cache_run --task_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --nr_samples 3000 --model_name meta-llama/Llama-3.2-1B-Instruct --hf_token INSERT_KEY
 ```
 Just rerun with the different models (see supported datasets and models [here](#supported-models-and-datasets)).
 
-This step post-processes the cache data (subselects acivation values based on token positions ("last" of the prompt and "exact" of the answer)), making the cached files significantly smaller
+This step post-processes the cache data (subselects activation values based on token positions ("last" of the prompt and "exact" of the answer)), making the cached files significantly smaller
 ```bash
 python -m cache.cache_postprocess --task_names sentiment_analysis yes_no_question mmlu_high_school sms_spam
 ```
@@ -120,7 +124,7 @@ To evaluate the steering methods, go to the following notebook `nbs/evaluate_ste
 
 ### How to download datasets
 
-To download the datasets, please following the instructions [here](src/how-to-download-datasets.md).
+To download the datasets, please follow the instructions [here](src/how-to-download-datasets.md).
 
 #### Supported datasets and models
 
@@ -141,10 +145,6 @@ Our experiments currenly work with these models
 - `meta-llama/Llama-3.2-1B-Instruct`
 
 These models are chosen based on compatibility with our current implementation, which assumes a decoder-only architecture with blocks containing a residual stream.
-
-### Extend task handler
-
-..
 
 ### Thank you
 

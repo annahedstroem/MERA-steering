@@ -89,7 +89,7 @@ python mera.py --task_names yes_no_question --model_name google/gemma-2-2b
 
 ## How to reproduce experimental results
 
-In the following, we describe how to reproduce the results in the paper. It requires access to wandb (and that you pass your API [key](https://docs.wandb.ai/support/find_api_key/) and that datasets are downloaded and saved to root `.hf_cache` folder[here](#how-to-download-datasets)). 
+In the following, we describe how to reproduce the results in the paper. It requires access to wandb (and that you pass your API [key](https://docs.wandb.ai/support/find_api_key/) and that datasets are downloaded and saved to root `.hf_cache` folder [here](#how-to-download-datasets)). 
 
 Create a  `runs/` folder at root and go to `src/` folder.
 
@@ -98,34 +98,46 @@ mkdir runs/
 cd src
 ```
 
-Step 1. For each model, to prepare datasets for probe training (see supported datasets and models [here](#supported-models-and-datasets)) run the following script 
+<details> <summary><b>Step 1.</b> Prepare datasets for probe training</summary>
+<br>
+For each model, to prepare datasets for probe training (see supported datasets and models [here](#supported-models-and-datasets)) run the following script 
+  
 ```bash
 python -m cache.cache_run --task_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --nr_samples 3000 --model_name meta-llama/Llama-3.2-1B-Instruct --hf_token INSERT_KEY
 ```
 Just rerun with the different models (see supported datasets and models [here](#supported-models-and-datasets)).
 
-This step post-processes the cache data (subselects activation values based on token positions ("last" of the prompt and "exact" of the answer)), making the cached files significantly smaller
+Next, post-processes the cache data (i.e., subselect activation values based on token positions ("last" of the prompt and "exact" of the answer)), making the cached files significantly smaller in size in preparation for probe training.
 ```bash
 python -m cache.cache_postprocess --task_names sentiment_analysis yes_no_question mmlu_high_school sms_spam
 ```
+</details>
 
-Step 2. For each model, to train linear probes (error estimators), run the following script
+<details> <summary><b>Step 2.</b> Train linear probes</summary>
+<br>
+  For each model, to train linear probes (error estimators), run the following script
 ```bash
 python -m probes.probes_train --task_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --model_name meta-llama/Llama-3.2-1B-Instruct --save_name trial --process_saes False
 ```
 if you want to change any of the hyperparameters, please edit the script `probes_train.py` directly.
 
-Then, to evaluate the probes, go to the following notebook `nbs/evaluate_probes.py`.
+To analyse the performance of the probes, go to the following notebook `nbs/evaluate_probes.py`.
+</details>
 
-Step 3. For each model, to benchmark steering methods, run the following script
+<details> <summary><b>Step 3.</b> Benchmark steering methods</summary>
+<br>
+  For each model, to benchmark steering methods, run the following script
 ```bash
 python -m steering.steering_run --steering_methods optimal_probe --task_names sms_spam --model_names "meta-llama/Llama-3.2-1B-Instruct" --fname custom_experiment --probe_token_pos exact --wandb_key INSERT_KEY
 ```
-To evaluate the steering methods, go to the following notebook `nbs/evaluate_steering.py`.
+To analyse the performance of the steering methods, go to the following notebook `nbs/evaluate_steering.py`.
+</details>
 
-### How to download datasets
+## Dataset and models
 
-To download the datasets, please follow the instructions [here](src/how-to-download-datasets.md).
+#### How to download datasets
+
+To download the datasets, please follow the instructions [here](src/how-to-download-datasets.md). If you want to include additional datasets, please see the following guide [here](src/how-extend-datasets.md)).
 
 #### Supported datasets and models
 
@@ -134,8 +146,6 @@ Currently, we support these datasets
 - `yes_no_question`
 - `mmlu_high_school`
 - `sms_spam`
-
-but by extending task_handler (see separate instructions [here](src/how-extebd.datasets.md)) additioal datasets can be added.
 
 Our experiments currenly work with these models
 - `google/gemma-2-2b`

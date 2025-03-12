@@ -1,0 +1,159 @@
+<br/><br/>
+<p align="center">
+  <img width="250" src="logo.png">
+<h3 align="center"><b>Inference-time Steering for Language Models</b></h3>
+<p align="center">PyTorch</p>
+<br/><br/>
+
+This repository contains the code and experiments for the paper **["To Steer or Not to Steer? Mechanistic Error Reduction with Abstention for Language Models"]([Link](https://openreview.net/pdf?id=ukLxqA8zXj))**.
+
+[![Getting started!](https://colab.research.google.com/assets/colab-badge.svg)](anonymous)
+![Python version](https://img.shields.io/badge/python-3.7%20%7C%203.8%20%7C%203.9%20%7C%203.10%20%7C%203.11-blue.svg)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+<!--[![PyPI version](https://badge.fury.io/py/metaquantus.svg)](https://badge.fury.io/py/metaquantus)-->
+<!--[![Python package](https://github.com/annahedstroem/MetaQuantus/actions/workflows/python-publish.yml/badge.svg)](https://github.com/annahedstroem/MetaQuantus/actions/workflows/python-publish.yml/badge.svg)-->
+<!--[![Launch Tutorials](https://mybinder.org/badge_logo.svg)](anonymous)-->
+
+Please note that this repository is under active development!
+
+## Citation
+
+If you find this work interesting or useful in your research, use the following Bibtex annotation to cite us:
+
+```bibtex
+@article{mera2025steering,
+    title={To Steer or Not to Steer? Mechanistic Error Reduction with Abstention for Language Models},
+    author={},
+    journal={},
+    year={},
+    url={},
+}
+```
+
+<!--This work has been published ...........-->
+
+## Repository overview
+
+The repository is organised as follows:
+- The `src/` folder contains all necessary functions.
+- The `nbs/` folder includes notebooks for generating the plots in the paper and for benchmarking experiments.
+- The `assets/` folder contains all files to reproduce the experiments.
+- The `tests/` folder contains the tests.
+
+## Paper highlights 📚
+
+Our approach consists of three main steps. First, we use linear probes to obtain an effective direction for minimising the predicted error. Second, this direction is then scaled using the closed-form solution at both the token and layer levels. Third, we calibrate the steering threshold against the true error on the calibration dataset, informed by the user's tolerance for uncertainty.
+</p>
+<p align="center">
+  <img width="800" src="summary.png"> 
+</p>
+
+## Installation
+
+Install the necessary packages using the provided [requirements.txt](https://link_to_repo):
+
+```bash
+conda init
+pip install -r requirements.txt
+pip install -e llm-error-steering/external/SAELens/.
+pip install transformers datasets accelerate huggingface_hub
+```
+
+## Package requirements 
+
+Required packages are:
+
+```setup
+python>=3.10.1
+torch>=2.0.0
+transformers
+datasets
+torch
+huggingface_hub
+accelerate>=0.26.0
+```
+
+## Getting started
+
+If you want to try using MERA with your own dataset and model, go to the following notebook `nbs/getting_started.py`.
+
+To steer with MERA on any of the existing datasets and models (see supported datasets and models [here](#supported-models-and-datasets))., run the following script
+```bash
+python mera.py --task_names yes_no_question --model_name google/gemma-2-2b
+```
+
+## How to reproduce experimental results
+
+In the following, we describe how to reproduce the results in the paper. It requires access to wandb (and that you pass your API [key](https://docs.wandb.ai/support/find_api_key/) and that datasets are downloaded and saved to root `.hf_cache` folder[here](#how-to-download-datasets)). 
+
+Create a  `runs/` folder at root and go to `src/` folder.
+
+```bash
+mkdir runs/
+cd src
+```
+
+Step 1. For each model, to prepare datasets for probe training (see supported datasets and models [here](#supported-models-and-datasets)) run the following script 
+```bash
+python -m cache.cache_run --task_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --nr_samples 3000 --model_name meta-llama/Llama-3.2-1B-Instruct --hf_token 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 // INSERT_KEY
+```
+Just rerun with the different models (see supported datasets and models [here](#supported-models-and-datasets)).
+
+This step post-processes the cache data (subselects acivation values based on token positions ("last" of the prompt and "exact" of the answer)), making the cached files significantly smaller
+```bash
+python -m cache.cache_postprocess --task_names sentiment_analysis yes_no_question mmlu_high_school sms_spam
+```
+
+Step 2. For each model, to train linear probes (error estimators), run the following script
+```bash
+python -m probes.probes_train --task_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --model_name meta-llama/Llama-3.2-1B-Instruct --save_name trial --process_saes False
+```
+if you want to change any of the hyperparameters, please edit the script `probes_train.py` directly.
+
+Then, to evaluate the probes, go to the following notebook `nbs/evaluate_probes.py`.
+
+Step 3. For each model, to benchmark steering methods, run the following script
+```bash
+python -m steering.steering_run --steering_methods optimal_probe --task_names sms_spam --model_names "meta-llama/Llama-3.2-1B-Instruct" --fname custom_experiment --probe_token_pos exact --wandb_key INSERT_KEY
+```
+To evaluate the steering methods, go to the following notebook `nbs/evaluate_steering.py`.
+
+### How to download datasets
+
+To download the datasets, please following the instructions [here](src/how-to-download-datasets.md).
+
+#### Supported datasets and models
+
+Currently, we support these datasets
+- `sentiment_analysis`
+- `yes_no_question`
+- `mmlu_high_school`
+- `sms_spam`
+
+but by extending task_handler (see separate instructions [here](src/how-extebd.datasets.md)) additioal datasets can be added.
+
+Our experiments currenly work with these models
+- `google/gemma-2-2b`
+- `google/gemma-2-2b-it`
+- `Qwen/Qwen2.5-3B`
+- `Qwen/Qwen2.5-3B-Instruct`
+- `meta-llama/Llama-3.2-1B`
+- `meta-llama/Llama-3.2-1B-Instruct`
+
+These models are chosen based on compatibility with our current implementation, which assumes a decoder-only architecture with blocks containing a residual stream.
+
+### Extend task handler
+
+..
+
+### Thank you
+
+We hope our repository is beneficial to your work and research. If you have any feedback, questions, or ideas, please feel free to raise an issue in this repository. Alternatively, you can reach out to us directly via email for discussions or suggestions. 
+
+📧 Contact us: 
+- Anna Hedström: [hedstroem.anna@gmail.com](mailto:hedstroem.anna@gmail.com)
+- Salim Amoukou: [salimamoukou@gmail.com](mailto:salimamoukou@gmail.com)
+
+Thank you for your interest and support!
+
+

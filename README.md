@@ -42,15 +42,15 @@ The repository is organised as follows:
 
 ## Paper highlights 📚
 
-Our approach consists of three main steps. First, we use linear probes to obtain an effective direction for minimising the predicted error. Second, this direction is then scaled using the closed-form solution at both the token and layer levels. Third, we calibrate the steering threshold against the true error on the calibration dataset, informed by the user's tolerance for uncertainty.
+Our approach consists of three main steps. First, we use linear probes to obtain an effective direction for minimising the predicted error. Second, this direction is then scaled using the closed-form solution at both the token and layer levels. Third, we calibrate the steering threshold against the probe's error on a calibration dataset, informed by the user's tolerance for uncertainty.
 </p>
 <p align="center">
   <img width="750" src="summary.png"> 
 </p>
 
-The main benefits of MERA includes:
-- **Selective steering** — at token position and layer-level, we steer only if p̂(h) > α
-- **Adaptive strength** — intervention scales with the predicted error￼λ ∝ p̂(h)
+The main benefits of MERA are:
+- **Selective steering** — steer only if the probe's estimated error is larger than a calibrated threshold α
+- **Adaptive strength** — the steering intensity λ scales with the probe's estimated error 
 - **Global abstention** — steer only if when confident, such that performance is at least ε with probability 1-δ
 
 ## Installation
@@ -58,7 +58,6 @@ The main benefits of MERA includes:
 Install the necessary packages using the provided [requirements.txt](https://github.com/annahedstroem/MERA-steering/blob/main/requirements.txt):
 
 ```bash
-conda init
 pip install -r requirements.txt
 pip install -e git+https://github.com/jbloomAus/SAELens.git#egg=SAELens
 pip install transformers datasets accelerate huggingface_hub
@@ -82,16 +81,19 @@ wandb
 
 If you want to try using MERA with your own dataset and model, go to the following notebook `nbs/getting_started.py`.
 
-To steer with MERA on any of the existing datasets and models (see supported datasets and models [here](#supported-models-and-datasets))., run the following script
+To steer with MERA on any of the existing datasets and models (see supported datasets and models [here](#supported-models-and-datasets)), run the following script:
 ```bash
 python mera.py --task_names yes_no_question --model_name google/gemma-2-2b
 ```
 
 ## How to reproduce experimental results
 
-In the following, we describe how to reproduce the results in the paper. It requires access to wandb (and that you pass your API [key](https://docs.wandb.ai/support/find_api_key/) and that datasets are downloaded and saved to root `.hf_cache` folder [here](#how-to-download-datasets)). 
+In the following, we describe how to reproduce the results in the paper. It requires 
+- access to `wandb` (and that you pass your API [key](https://docs.wandb.ai/support/find_api_key/)
+- that datasets are downloaded and saved to a `MERA-steering/hf_cache` folder [here](#how-to-download-datasets))
+- that you have a `runs/` folder to save results
 
-Create a  `runs/` folder at root and go to `src/` folder.
+Create a  `runs/` folder at the root and go to `src/` folder.
 
 ```bash
 mkdir runs/
@@ -100,7 +102,7 @@ cd src
 
 <details> <summary><b>Step 1.</b> Prepare datasets for probe training</summary>
 <br>
-For each model, to prepare datasets for probe training (see supported datasets and models [here](#supported-models-and-datasets)) run the following script 
+For each model, to prepare datasets for probe training (see supported datasets and models [here](#supported-models-and-datasets)) run the following script:
   
 ```bash
 python -m cache.cache_run --task_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --nr_samples 3000 --model_name meta-llama/Llama-3.2-1B-Instruct --hf_token INSERT_KEY
@@ -115,7 +117,7 @@ python -m cache.cache_postprocess --task_names sentiment_analysis yes_no_questio
 
 <details> <summary><b>Step 2.</b> Train linear probes</summary>
 <br>
-  For each model, to train linear probes (error estimators), run the following script
+  For each model, to train linear probes (error estimators), run the following script:
 ```bash
 python -m probes.probes_train --task_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --model_name meta-llama/Llama-3.2-1B-Instruct --save_name trial --process_saes False
 ```
@@ -137,25 +139,25 @@ To analyse the performance of the steering methods, go to the following notebook
 
 #### How to download datasets
 
-To download the datasets, please follow the instructions [here](src/how-to-download-datasets.md). If you want to include additional datasets, please see the following guide [here](src/how-extend-datasets.md)).
+To download the datasets, please follow the instructions [here](src/how-to-download-datasets.md). If you want to include additional datasets, please follow the guide [here](src/how-extend-datasets.md)).
 
 #### Supported datasets and models
 
-Currently, we support these datasets
+Currently, we support these datasets:
 - `sentiment_analysis`
 - `yes_no_question`
 - `mmlu_high_school`
 - `sms_spam`
 
-Our experiments currenly work with these models
+Our experiments work with these models:
 - `google/gemma-2-2b`
 - `google/gemma-2-2b-it`
 - `Qwen/Qwen2.5-3B`
 - `Qwen/Qwen2.5-3B-Instruct`
 - `meta-llama/Llama-3.2-1B`
 - `meta-llama/Llama-3.2-1B-Instruct`
-
-These models are chosen based on compatibility with our current implementation, which assumes a decoder-only architecture with blocks containing a residual stream.
+- 
+... but other `HuggingFace` decoder-only LM models that contain blocks with a residual stream would be compatible with our current implementation (see `register_hooks`  in [here](https://github.com/annahedstroem/MERA-steering/blob/main/src/cache/cache_utils.py#L217)).
 
 ### Thank you
 
@@ -166,5 +168,3 @@ We hope our repository is beneficial to your work and research. If you have any 
 - Salim Amoukou: [salimamoukou@gmail.com](mailto:salimamoukou@gmail.com)
 
 Thank you for your interest and support!
-
-

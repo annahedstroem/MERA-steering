@@ -159,7 +159,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--cache_dir",
         type=str,
-        default="../../hf-cache/",
+        default="../hf-cache/",
         help="File path for getting the data.",
     )
     parser.add_argument(

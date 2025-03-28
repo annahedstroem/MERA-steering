@@ -31,7 +31,7 @@ DELTA_COLS = [
 def compute_error_metrics(targets, prefix="inner_evaluation/"):
     """Compute error-related metrics."""
     metrics = {}
-    for suffix, suffix_load in {"": "", " Exact", : "_exact"}.items():
+    for suffix, suffix_load in {"": "", " Exact": "_exact"}.items():
         error_values = 1 - np.array(targets[f"y_softmax{suffix_load}"])
         metrics.update({
             f"{prefix}Error{suffix}": np.mean(error_values),
@@ -51,7 +51,7 @@ def compute_error_metrics(targets, prefix="inner_evaluation/"):
 def compute_classification_metrics(labels, targets, prefix="inner_evaluation/"):
     """Compute classification metrics like F1-score, Recall, and Precision."""
     metrics = {}
-    for suffix, suffix_load in {"": "", " Exact", : "_exact"}.items():
+    for suffix, suffix_load in {"": "", " Exact": "_exact"}.items():
         metrics.update({
             f"{prefix}F1 Score{suffix}": f1_score(labels, targets[f"y_pred{suffix_load}"], average="weighted"),
             f"{prefix}Recall{suffix}": recall_score(labels, targets[f"y_pred{suffix_load}"], average="weighted"),
@@ -67,7 +67,7 @@ def compute_transitions(predictions):
 def compute_transition_metrics(targets, prefix="inner_evaluation/"):
     """Compute transition metrics for error analysis."""
     metrics = {}
-    for suffix, suffix_load in {"": "", " Exact", : "_exact"}.items():
+    for suffix, suffix_load in {"": "", " Exact": "_exact"}.items():
         pos_transitions, neg_transitions = compute_transitions(targets[f"y_correct{suffix_load}"])
         metrics.update({
             f"{prefix}Correct Transitions{suffix}": np.mean(pos_transitions),
@@ -359,22 +359,22 @@ def safe_serialize(value):
             return str(value)
         if isinstance(value, list):
             if all(isinstance(v, (bool, np.bool_)) for v in value):
-                return [int(v) for v in value]  # List of bools → list of ints
+                return [int(v) for v in value]  # List of bools → list of ints!
             if all(isinstance(v, (int, float, np.integer, np.floating)) for v in value):
-                return json.dumps(value)  # List of numbers → JSON string
-            return json.dumps(value)  # General list → JSON string
+                return json.dumps(value)  # List of numbers → JSON string!
+            return json.dumps(value)  # General list → JSON string!
 
         if isinstance(value, dict):
-            return json.dumps(value)  # Dict → JSON string
+            return json.dumps(value)  # Dict → JSON string!
 
         if isinstance(value, (np.bool_, bool)):
-            return bool(value)  # Ensure proper bool type
+            return bool(value)  # Ensure proper bool type!
 
         if isinstance(value, (np.integer, int)):
-            return int(value)  # Ensure proper int type
+            return int(value)  # Ensure proper int type!
 
         if isinstance(value, (np.floating, float)):
-            return float(value)  # Ensure proper float type
+            return float(value)  # Ensure proper float type!
 
         if isinstance(value, torch.Tensor):
             return (
@@ -384,7 +384,7 @@ def safe_serialize(value):
             )
 
         if value is None:
-            return None  # Pass None as is
+            return None  # Pass None as is!
 
     except (TypeError, ValueError) as e:
         print(

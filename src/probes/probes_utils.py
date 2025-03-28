@@ -3,7 +3,7 @@ import numpy as np
 from typing import Optional
 
 
-def post_process_df(
+def postprocess_df_probes(
     df, filter_error_type: Optional[str] = "sm", filter_probe_token_pos: Optional[str] = "Last", filter_inputs: Optional[str] = "Activations"
 ) -> pd.DataFrame:
     """Process the probe performance result per LM model and apply filters at the end."""
@@ -17,6 +17,7 @@ def post_process_df(
     df["y_pred"] = df["y_pred"].apply(lambda x: np.array(x))
     df["y_test"] = df["y_test"].apply(lambda x: np.array(x))
 
+    # Add compariso columns.
     for metric in ["MSE", "RMSE"]:
         df[f"{metric}-Better-Than-Dummy"] = (
             df[f"Dummy-{metric}"] > df[f"{metric}"]

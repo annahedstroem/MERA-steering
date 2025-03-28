@@ -58,9 +58,16 @@ The main benefits of MERA are:
 Install the necessary packages using the provided [requirements.txt](https://github.com/annahedstroem/MERA-steering/blob/main/requirements.txt):
 
 ```bash
+conda create --name mera python==3.10
+conda activate mera 
+pip install torch --extra-index-url https://download.pytorch.org/whl/cu122  
 pip install -r requirements.txt
-pip install -e git+https://github.com/jbloomAus/SAELens.git#egg=SAELens
-pip install transformers datasets accelerate huggingface_hub
+```
+
+If you want to run SAE experiments, also install:
+```bash
+pip install -e git+https://github.com/jbloomAus/SAELens.git#egg=sae-lens
+pip install --force-reinstall --no-cache-dir cffi
 ```
 
 ## Package requirements 
@@ -68,8 +75,8 @@ pip install transformers datasets accelerate huggingface_hub
 Required packages are:
 
 ```setup
-python>=3.10.1
-torch>=2.0.0
+python
+torch
 transformers
 datasets
 huggingface_hub

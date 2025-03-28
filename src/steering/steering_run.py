@@ -107,7 +107,7 @@ for model_name in model_names:
     file_path_probes = f"../runs/probes/df_all_probes_{model_name.split('/')[1]}.pkl"
     all_results_list = []
 
-    for task_name in task_names:  
+    for task_name in task_names:
 
         ##############################
         ####### Load task_names ######
@@ -127,10 +127,10 @@ for model_name in model_names:
         dataset_handler = DatasetHandler(task_config, tokenizer=model_handler.tokenizer)
         nr_layers = model_handler.nr_layers
         k = "_with_saes" if PROCESS_SAES else ""
-        file_path_acts = f"../../MERA-development/runs/{task_name}/{model_name.split('/')[1]}_post_processed_data{k}.pkl"
+        file_path_acts = f"../runs/{task_name}/{model_name.split('/')[1]}_post_processed_data{k}.pkl"
 
         # Hyperparameters save files.
-        save_dir = f"../../MERA-development/runs/{task_name}/{model_name.split('/')[1]}/steering/"
+        save_dir = f"../runs/{task_name}/{model_name.split('/')[1]}/steering/"
         os.makedirs(save_dir, exist_ok=True)
         save_key = f"{fname}_{task_config.nr_test_samples}"
         file_path_single_run = f"{save_dir}{save_key}_method.pkl"
@@ -144,7 +144,7 @@ for model_name in model_names:
 
         # Load task-specific post-processed data for vanilla steering.
         y_targets = load_saved_data(
-            save_dir=f"../../MERA-development/runs/{task_name}/{model_name.split('/')[1]}/",
+            save_dir=f"../runs/{task_name}/{model_name.split('/')[1]}/",
             save_key="3000",
             data_type="targets",
         )
@@ -182,7 +182,7 @@ for model_name in model_names:
             pd.read_pickle(file_path_probes),
             filter_error_type=error_type,
             filter_probe_token_pos=probe_token_pos.replace("_", "").capitalize(),
-            filter_inputs="Activations"
+            filter_inputs="Activations",
         )
 
         ##########################################
@@ -211,7 +211,7 @@ for model_name in model_names:
                         ),
                     )
                 }
-                '''
+                """
                 probe_layers[(task, steer_flag)] = get_best_layer(
                     df_all_probes,
                     task=task,
@@ -219,7 +219,7 @@ for model_name in model_names:
                     metric=metric,
                     mode=steer_flag,
                 )
-                '''
+                """
 
         sets = {
             f"{k}_sets": apply_activation_filtering(
@@ -232,15 +232,17 @@ for model_name in model_names:
             for k in top_k_sets
         }
 
-        
         nr_best_coefficients_to_steer = [
-            (int(k), int(np.count_nonzero(v))) for k, v in probe_weights[("regression", "best")].items()
+            (int(k), int(np.count_nonzero(v)))
+            for k, v in probe_weights[("regression", "best")].items()
         ]
         nr_worst_coefficients_to_steer = [
-            (int(k), int(np.count_nonzero(v))) for k, v in probe_weights[("regression", "worst")].items()
+            (int(k), int(np.count_nonzero(v)))
+            for k, v in probe_weights[("regression", "worst")].items()
         ]
         nr_median_coefficients_to_steer = [
-            (int(k), int(np.count_nonzero(v))) for k, v in probe_weights[("regression", "median")].items()
+            (int(k), int(np.count_nonzero(v)))
+            for k, v in probe_weights[("regression", "median")].items()
         ]
         print(
             f"[INFO] Number of best coefficients to steer per layer {nr_best_coefficients_to_steer}"
@@ -275,18 +277,18 @@ for model_name in model_names:
             # , "specific", "probe_position"] "probe_token_pos": probe_token_pos.replace("_", "") if "exact" in probe_token_pos else "last",
         }
         derive_settings = {
-            "with_logit_only": {
-                "derive_with_sigmoid": False,
-                "derive_with_logit": True,
-            },
+            # "with_logit_only": {
+            #     "derive_with_sigmoid": False,
+            #     "derive_with_logit": True,
+            # },
             # "with_sigmoid_only": {
             #    "derive_with_sigmoid": True,
             #    "derive_with_logit": False,
             # },
-            # "with_both": {
-            #    "derive_with_sigmoid": True,
-            #    "derive_with_logit": True,
-            # },
+            "with_both": {
+                "derive_with_sigmoid": True,
+                "derive_with_logit": True,
+            },
             # "with_none": {
             #    "derive_with_sigmoid": False,
             #    "derive_with_logit": False,
@@ -462,8 +464,8 @@ for model_name in model_names:
         all_keys.update(DELTA_COLS)
 
         print("\n[INFO] Beginning benchmarking!")
-        overall_baseline = None 
-        #errors_baselines = (None, None)
+        overall_baseline = None
+        # errors_baselines = (None, None)
         first_result = True
 
         ####################################
@@ -566,7 +568,7 @@ for model_name in model_names:
                     evaluation_metrics = steering_init.evaluate(
                         prompts=test_prompts,
                         labels=test_labels,
-                        #errors_baselines=errors_baselines if errors_baselines is not None else None,
+                        # errors_baselines=errors_baselines if errors_baselines is not None else None,
                         alpha_calibration_token_pos_target=(
                             alpha_calibration_token_pos_target
                             if requires_dual_alpha
@@ -599,7 +601,7 @@ for model_name in model_names:
                             "Correct Predictions Exact",
                         ]
                     }
-                    #errors_baselines = (overall_baseline["inner_evaluation/Error"], overall_baseline["inner_evaluation/Error Exact"])
+                    # errors_baselines = (overall_baseline["inner_evaluation/Error"], overall_baseline["inner_evaluation/Error Exact"])
                     overall_baseline.update({k: 0.0 for k in DELTA_COLS})
                     print(f"[INFO] Baseline metrics set: {overall_baseline}")
                     evaluation_metrics_baseline = deepcopy(evaluation_metrics)

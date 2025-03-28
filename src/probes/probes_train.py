@@ -36,6 +36,7 @@ def train_probes(
     epsilon: float = 1e-10,
     save: bool = True,
     normalise_error: bool = False,
+    transform_error: bool = False,
     match_type: str = "",
 ) -> pd.DataFrame:
 
@@ -51,7 +52,13 @@ def train_probes(
                 continue
             X = np.array(layer_features)
             for model_task, y_true in targets.items():
+                
+                # Transform to log-odds-ratio space (numerical stability step).
+                if transform_error and model_task == "regression":
+                    y_true = np.clip(y_true, 1e-8, 1 - 1e-8)  
+                    y_true = np.log(y_true / (1 - y_true))   
 
+                
                 if normalise_error and model_task == "regression":
                     y_true /= y_true.max()
 
@@ -152,7 +159,10 @@ def train_probes(
     if save:
         df_probing.to_pickle(path.replace(".pkl", f"_{task_name}.pkl"))
         with open(path_probes.replace(".pkl", f"_{task_name}.pkl"), "wb") as f:
-            pickle.dump(model_objects, f)
+            try:
+                pickle.dump(model_objects, f)
+            except Exception as e:
+                print(f"Could not fully load file {f} — {e}")
 
     return df_probing, model_objects
 
@@ -169,7 +179,7 @@ if __name__ == "__main__":
         "--save_cache_key", type=str, default="3000", help="Dataset name."
     )
     parser.add_argument(
-        "--save_dir", type=str, default="../../MERA-development/runs", help="Save directory for the cache."
+        "--save_dir", type=str, default="../runs", help="Save directory for the cache."
     )
     parser.add_argument(
         "--match_types", nargs="+", default=["", "_exact"], help="List of match_types."
@@ -259,7 +269,7 @@ if __name__ == "__main__":
     }
     
     # How to save the probes.
-    path = f'../../runs/probes/sub/df_probing_{model_name}_{save_name}.pkl'
+    path = f'../../runs/probes/sub/df_new_probing_{model_name}_{save_name}.pkl'
     path_models = f'../../runs/probes/sub/models_{model_name}_{save_name}.pkl'
 
     df_probings = []
@@ -275,7 +285,11 @@ if __name__ == "__main__":
                 f"{save_dir}/{task_name}/{model_name.split('/')[1]}_post_processed_data{k}.pkl"
             )
             with open(file_path, "rb") as f:
-                acts = pickle.load(f)
+                try:
+                    acts = pickle.load(f)
+                except Exception as e:
+                    print(f"Could not fully load file {f} — {e}")
+
             y_targets = load_saved_data(
                 save_dir=f"{save_dir}/{task_name}/{model_name.split('/')[1]}/",
                 save_key=save_cache_key,
@@ -303,7 +317,6 @@ if __name__ == "__main__":
                 features = {
                     "Activations": activations_cache,
                 }
-
                 if process_saes:
                     features["Encodings"] = sae_enc_cache
                 targets = {
@@ -324,6 +337,7 @@ if __name__ == "__main__":
                     path=path,
                     path_probes=path_models,
                     match_type=suffix + "last" if suffix == "" else "exact",
+                    transform_error=True,
                 )
                 df_probings.append(df_probing)
                 model_objects.update(model_objects)
@@ -334,4 +348,7 @@ if __name__ == "__main__":
     # Save a general!
     df.to_pickle(path.replace("sub/", ""))
     with open(path_models.replace("sub/", ""), "wb") as f:
-        pickle.dump(model_objects, f)
+        try:
+            pickle.dump(model_objects, f)
+        except Exception as e:
+            print(f"Could not fully load file {f} — {e}")

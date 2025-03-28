@@ -12,8 +12,6 @@ from utils import *
 from cache.cache_utils import *
 from tasks.task_handler import *
 
-
-
 def main(
     hf_token: str,
     token_position: int,
@@ -119,6 +117,9 @@ def main(
             )
 
         if run_saes:
+            
+            # Ugly solution, but only import SAE lens if necessary.
+            from cache.cache_sae_utils import collect_saes
 
             # Step 5: Generate SAE activations.
             sae_activations = collect_saes(

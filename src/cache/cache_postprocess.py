@@ -16,7 +16,7 @@ if __name__ == "__main__":
         "--save_cache_key", type=str, default="3000_", help="Save key for the cache."
     )
     parser.add_argument(
-        "--save_dir", type=str, default="../../MERA-development/runs", help="Save directory for the cache."
+        "--save_dir", type=str, default="../runs", help="Save directory for the cache."
     )
     parser.add_argument(
         "--task_names",

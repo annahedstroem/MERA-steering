@@ -49,8 +49,8 @@ def plot_probe_performance_by_model_family(
             PLOT_SAEs = ix in [4, 5]
             col = "Match-Type" if not PLOT_SAEs else "Inputs"
             
-            df = post_process_df(pd.read_pickle(f"../runs/probes/{filename}.pkl"), filter_error_type=error_type, filter_probe_match_type="Last")
-            df_exact = post_process_df(pd.read_pickle(f"../runs/probes/{filename}.pkl"), filter_error_type=error_type, filter_probe_match_type="Exact")
+            df = postprocess_df_probes(pd.read_pickle(f"../runs/probes/{filename}.pkl"), filter_error_type=error_type, filter_probe_match_type="Last")
+            df_exact = postprocess_df_probes(pd.read_pickle(f"../runs/probes/{filename}.pkl"), filter_error_type=error_type, filter_probe_match_type="Exact")
             df_combined = pd.concat([df, df_exact])
             
             df_best_coefficients = get_best_coefficients_plotting(
@@ -119,7 +119,7 @@ def plot_probe_performance_by_dataset(
         for y_axis in [f"{metric}"]:
             for filename, model_name in filename_pairs:
                 
-                df = post_process_df(pd.read_pickle(f"../runs/probes/{filename}.pkl"), filter_error_type=error_type, filter_probe_match_type="Last")
+                df = postprocess_df_probes(pd.read_pickle(f"../runs/probes/{filename}.pkl"), filter_error_type=error_type, filter_probe_match_type="Last")
                 df_exact = post_process_df(pd.read_pickle(f"../runs/probes/{filename}.pkl"), filter_error_type=error_type, filter_probe_match_type="Exact")
                 df_combined = pd.concat([df, df_exact])
                 

@@ -30,8 +30,12 @@ class SteeringByProbe(Steering):
         super().__init__(
             model, tokenizer, tokenizer_kwargs, dataset_info, steering_kwargs
         )
-        assert "probe_weights" in self.steering_kwargs, "Pass 'probe_weights' parameter (dict) to run SteeringByProbe class."
-        assert "mode" in self.steering_kwargs, "Pass 'mode' parameter (str) to run SteeringByProbe class."
+        assert (
+            "probe_weights" in self.steering_kwargs
+        ), "Pass 'probe_weights' parameter (dict) to run SteeringByProbe class."
+        assert (
+            "mode" in self.steering_kwargs
+        ), "Pass 'mode' parameter (str) to run SteeringByProbe class."
         assert self.steering_kwargs["mode"] in [
             "optimal_probe",
             "optimal_contrastive",
@@ -47,7 +51,7 @@ class SteeringByProbe(Steering):
             for layer_idx, layer_coeffs in self.steering_kwargs["probe_weights"].items()
         }
         self.mode = self.steering_kwargs.get("mode")
-        
+
         self.lmbda = self.steering_kwargs.get("lmbda", 1.0)
         self.alpha_value = self.steering_kwargs.get("alpha_value", None)
         self.derive_with_all = self.steering_kwargs.get("derive_with_all", True)
@@ -56,10 +60,11 @@ class SteeringByProbe(Steering):
         )
         self.derive_with_logit = self.steering_kwargs.get("derive_with_logit", True)
         self.probe_vector = self.probe_weights
-        self.internal_projections = {layer_idx: [] for layer_idx in self.steering_kwargs["probe_weights"]}
+        self.internal_projections = {
+            layer_idx: [] for layer_idx in self.steering_kwargs["probe_weights"]
+        }
 
         self.normalise_coeffs = self.steering_kwargs.get("normalise_coeffs", False)
-        
 
         if self.apply_layers_to_steer is None:
             self.apply_layers_to_steer = list(self.probe_weights.keys())
@@ -77,17 +82,16 @@ class SteeringByProbe(Steering):
         self.internal_projection_with_contrastive = self.steering_kwargs.get(
             "internal_projection_with_contrastive", False
         )
-        
+
         if self.debug:
             print("Layers to steer:", self.apply_layers_to_steer)
-
 
     def derive_closed_form_vector(
         self,
         activations: torch.Tensor,
         vector: torch.Tensor,
     ) -> torch.Tensor:
-    
+
         assert (
             self.alpha_value is not None
         ), "'alpha_value' cannot be None in 'derive_closed_form_vector' func."
@@ -153,6 +157,7 @@ class SteeringByProbe(Steering):
         elif self.mode == "additive_probe":
             return activations + self.lmbda * -self.probe_weights[layer_idx]
 
-        print("[DEBUG] Returning unsteered activations, as no 'mode' matched the implementation.")
+        print(
+            "[DEBUG] Returning unsteered activations, as no 'mode' matched the implementation."
+        )
         return activations
-

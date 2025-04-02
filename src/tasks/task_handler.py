@@ -137,6 +137,23 @@ dataset_info = {
         "NR_REF_SAMPLES": 210,
         "NR_TEST_SAMPLES": 210,
     },
+    "mmlu_professional": {
+        "CLASSES": [chr(i) for i in range(65, 69)],
+        "CLASS_LABEL_TO_INDEX": {chr(i): i - 65 for i in range(65, 69)},
+        "CLASS_INDEX_TO_LABEL": {i - 65: chr(i) for i in range(65, 69)},
+        "CLASS_LABEL_SEMANTIC": {
+            chr(i): generate_text_variants(chr(i), remove_lower=True)
+            for i in range(65, 69)
+        },
+        "DATASET_NAME": "mmlu",
+        "MAX_LENGTH": 250,
+        "MAX_NEW_TOKENS": 100,
+        "LABEL_NAME": "answer",
+        "SUB_TASKS": [],  # dynamically selected
+        "NR_CALIBRATION_SAMPLES": 2602,
+        "NR_REF_SAMPLES": 210,
+        "NR_TEST_SAMPLES": 210,
+    },
 }
 
 
@@ -146,7 +163,7 @@ class TaskConfig:
 
     token: str
     cache_dir: str
-    task_name: str
+    dataset_name: str
     device: str
     nr_devices: int
     model_name: str
@@ -159,8 +176,8 @@ class TaskConfig:
     nr_ref_samples: Optional[int] = None
 
     def __post_init__(self):
-        print(f"[INFO] Initalising {self.task_name}")
-        self.dataset_info = dataset_info[self.task_name]
+        print(f"[INFO] Initalising {self.dataset_name}")
+        self.dataset_info = dataset_info[self.dataset_name]
         if self.nr_samples is None:
             self.nr_samples = self.dataset_info["NR_CALIBRATION_SAMPLES"]
         if self.nr_test_samples is None:
@@ -261,11 +278,15 @@ class DatasetHandler:
     def _load_dataset(self):
         ds = load_from_disk(f"{self.config.cache_dir}{self.config.dataset_name}.hf")
         if self.config.dataset_name == "finance-instruct":
-            ds = ds.filter(lambda x: x["task_type"] == self.config.task_name)
+            ds = ds.filter(lambda x: x["task_type"] == self.config.dataset_name)
         elif self.config.dataset_name == "mmlu_pro":
             ds = ds.filter(lambda x: x["category"] in self.dataset_info["SUB_TASKS"])
         elif self.config.dataset_name == "mmlu":
-            ds = ds.filter(lambda x: x["subject"] in self.dataset_info["SUB_TASKS"])
+            if self.config.dataset_name == "mmlu_professional":
+                ds = ds.filter(lambda x: x["subject"].startswith("professional_"))
+            else:
+                ds = ds.filter(lambda x: x["subject"] in self.dataset_info["SUB_TASKS"])
+
         return ds
 
     def _get_samples(self, end_idx: int, start_idx: int = 0):
@@ -304,15 +325,20 @@ class DatasetHandler:
                     0
                 ]
                 token_id = tokenized_word[-1].item()
-                self.dataset_info["VALID_GROUND_TRUTH_TOKEN_IDS"][label][word] = token_id
+                self.dataset_info["VALID_GROUND_TRUTH_TOKEN_IDS"][label][
+                    word
+                ] = token_id
                 # print(f"{word}: {token_id}")
 
-        print(f"[INFO] VALID_GROUND_TRUTH_TOKEN_IDS updated: {self.dataset_info['VALID_GROUND_TRUTH_TOKEN_IDS']}")
+        print(
+            f"[INFO] VALID_GROUND_TRUTH_TOKEN_IDS updated: {self.dataset_info['VALID_GROUND_TRUTH_TOKEN_IDS']}"
+        )
 
     def _get_prompts(self, samples):
         if self.config.dataset_name == "finance-instruct":
             return [s["inputs"] + " " for s in samples]
         prompts = []
+
         if "mmlu" in self.config.dataset_name:
             if "pro" in self.config.dataset_name:
                 options = samples["options"]

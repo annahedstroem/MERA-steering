@@ -94,6 +94,8 @@ def compute_transitions(
     baseline: np.ndarray, steered: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Compute all transitions from baseline to steered: 0→1, 1→0, 0→0, 1→1."""
+    baseline = np.array(baseline)
+    steered = np.array(steered)
     return (
         (baseline == 0) & (steered == 1),  # Recovery!
         (baseline == 1) & (steered == 0),  # Regression!

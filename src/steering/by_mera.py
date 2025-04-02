@@ -81,9 +81,7 @@ class MERA(SteeringByProbe):
         if self.mode == "optimal_probe":
             optimal_theta, theta, condition = self.optimise_steering_closed_form(
                 activations, self.probe_weights[layer_idx]
-            )  # , apply_sigmoid=True)
-            if self.enable_theta_tracking:
-                self.update_theta_statistics(optimal_theta, theta, condition, layer_idx)
+            )
             return activations.to(self.model.device) + optimal_theta.to(
                 self.model.device
             )
@@ -92,10 +90,6 @@ class MERA(SteeringByProbe):
             optimal_theta, theta, condition = self.optimise_steering_closed_form(
                 activations, self.contrastive_vector[layer_idx]
             )
-            if self.enable_theta_tracking:
-                self.update_theta_statistics(
-                    optimal_theta, theta, condition, layer_idx, activations.shape
-                )
             return activations.to(self.model.device) + optimal_theta.to(
                 self.model.device
             )

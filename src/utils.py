@@ -5,6 +5,7 @@ import gc
 
 from difflib import get_close_matches
 
+
 def filter_valid(options, selection):
     """Filter and validate selection against available options."""
     if not selection:

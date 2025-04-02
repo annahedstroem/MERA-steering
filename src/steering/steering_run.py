@@ -646,7 +646,6 @@ for model_name in model_names:
                             "Correct Predictions Exact",
                         ]
                     }
-                    # errors_baselines = (overall_baseline["inner_evaluation/Error"], overall_baseline["inner_evaluation/Error Exact"])
                     overall_baseline.update({k: 0.0 for k in DELTA_COLS})
                     print(f"[INFO] Baseline metrics set: {overall_baseline}")
                     evaluation_metrics_baseline = deepcopy(evaluation_metrics)
@@ -668,7 +667,7 @@ for model_name in model_names:
                             if requires_dual_alpha
                             else ""
                         ),
-                        f"best_alpha{alpha_calibration_token_pos_target}": (
+                        f"best_alpha_{alpha_calibration_token_pos_target}": (
                             getattr(
                                 steering_init,
                                 f"best_alpha_{alpha_calibration_token_pos_target}",
@@ -681,10 +680,11 @@ for model_name in model_names:
                     **steering_kwargs,
                     **evaluation_metrics,
                 }
-                single_results = {
-                    k: v for k, v in single_results.items() if "Correct" not in k
-                }  # Remove lists of corrections.
-                all_results_list.append(single_results)
+                # Some processing.
+                excludes = ["Correct", "_ref", "probe_weights", "inner_evaluation"]
+                single_results = {k: v for k, v in single_results.items() if not any(ex in k for ex in excludes)}
+
+                # Print results.
                 print_single_results = {
                     k: v for k, v in single_results.items() if "overall_evaluation" in k
                 }
@@ -692,14 +692,17 @@ for model_name in model_names:
                     f"[INFO] Single results {steering_key_with_target}\n",
                     " ".join(
                         (
-                            f"{k.replace('overall_evaluation/', '')} {v:.3f}"
+                            f"{k} {v:.3f}"
                             if isinstance(v, (float, int))
-                            else f"{k.replace('overall_evaluation/', '')} {np.mean(v):.3f}"
+                            else f"{k} {np.mean(v):.3f}"
                         )
                         for k, v in print_single_results.items()
                         if "Correct" not in k
                     ),
                 )
+
+                single_results = {k.replace('overall_evaluation/', ''): v for k, v in single_results.items()}
+                all_results_list.append(single_results)
 
                 # Logging!
                 if first_result:

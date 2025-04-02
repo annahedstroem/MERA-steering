@@ -18,6 +18,7 @@ import os
 import sys
 import json
 import pickle
+import gc
 
 from tasks.task_handler import *
 from cache.cache_utils import *
@@ -49,7 +50,7 @@ parser.add_argument(
     help="Steering steering_methods to include (e.g., optimal_probe vanilla_contrastive).",
 )
 parser.add_argument(
-    "--task_names",
+    "--dataset_names",
     nargs="+",
     default=[],
     help="Tasks to include (e.g., sms_spam sentiment_analysis).",
@@ -57,7 +58,14 @@ parser.add_argument(
 parser.add_argument(
     "--model_names",
     nargs="+",
-    default=[],
+    default=[
+        "google/gemma-2-2b-it",
+        "google/gemma-2-2b",
+        "meta-llama/Llama-3.2-1B-Instruct",
+        # "meta-llama/Llama-3.2-1B",
+        "Qwen/Qwen2.5-3B-Instruct",
+        "Qwen/Qwen2.5-3B",
+    ],
     help="Models to include (e.g., Qwen/Qwen2.5-3B-Instruct).",
 )
 parser.add_argument(
@@ -84,6 +92,25 @@ parser.add_argument(
     default="Accuracy",
     help="What objective to use for calibration (default: Accuracy).",
 )
+parser.add_argument(
+    "--probe_file_name",
+    type=str,
+    default="df_probes_trans",
+    help="What probe_file_name to use for coefficients (default: df_probes_trans).",
+)
+parser.add_argument(
+    "--nr_test_samples",
+    type=int,
+    default=250,
+    help="Number of samples for test (default: 250).",
+)
+parser.add_argument(
+    "--nr_ref_samples",
+    type=int,
+    default=250,
+    help="Number of samples for calibration (default: 250).",
+)
+
 args = parser.parse_args()
 
 # Get the args.
@@ -93,48 +120,62 @@ top_k_sets = args.top_k_sets
 probe_token_pos = args.probe_token_pos
 error_type = args.error_type
 objective_key = args.objective_key
+probe_file_name = args.probe_file_name
+nr_test_samples = args.nr_test_samples
+nr_ref_samples = args.nr_ref_samples
 
 # Apply validation (if no args, use all)!
-task_names = filter_valid(SUPPORTED_TASKS, args.task_names)
+dataset_names = filter_valid(SUPPORTED_TASKS, args.dataset_names)
 model_names = filter_valid(SUPPORTED_MODELS, args.model_names)
 valid_methods = filter_valid(list(SUPPORTED_METHODS.values()), args.steering_methods)
-print(f"[INFO] Tasks: {task_names} | Models: {model_names}")
+print(f"[INFO] Tasks: {dataset_names} | Models: {model_names}")
+print(f"[DEBUG] Valid methods: {valid_methods}")
 
 for model_name in model_names:
 
-    PROCESS_SAES = False if ("meta" in model_name) or ("Qwen" in model_name) else True
-
-    file_path_probes = f"../runs/probes/df_all_probes_{model_name.split('/')[1]}.pkl"
+    process_saes = (
+        False  # if ("meta" in model_name) or ("Qwen" in model_name) else True
+    )
     all_results_list = []
 
-    for task_name in task_names:
+    for dataset_name in dataset_names:
 
         ##############################
-        ####### Load task_names ######
+        ####### Load dataset_names ######
         ##############################
 
         task_config = TaskConfig(
             token=hf_token,
             cache_dir="../hf-cache/",
-            task_name=task_name,
+            dataset_name=dataset_name,
             model_name=model_name,
             device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
             nr_devices=5,
             batch_size=1,
+            nr_test_samples=nr_test_samples,
+            nr_ref_samples=nr_ref_samples,
             flexible_match=True,
         )
         model_handler = ModelHandler(task_config)
         dataset_handler = DatasetHandler(task_config, tokenizer=model_handler.tokenizer)
         nr_layers = model_handler.nr_layers
-        k = "_with_saes" if PROCESS_SAES else ""
-        file_path_acts = f"../runs/{task_name}/{model_name.split('/')[1]}_post_processed_data{k}.pkl"
+        nr_training_samples = 3000 if "mmlu_professional" not in dataset_name else 2602
+        k = "_with_saes" if process_saes else ""
+        file_path_acts = f"../runs/{dataset_name}/{model_name.split('/')[1]}/{str(nr_training_samples)}_acts{k}.pkl"
+        file_path_probes = (
+            f"../runs/{dataset_name}/{model_name.split('/')[1]}/{probe_file_name}.pkl"
+        )
 
         # Hyperparameters save files.
-        save_dir = f"../runs/{task_name}/{model_name.split('/')[1]}/steering/"
+        save_dir = f"../runs/{dataset_name}/{model_name.split('/')[1]}/steering/"
         os.makedirs(save_dir, exist_ok=True)
         save_key = f"{fname}_{task_config.nr_test_samples}"
         file_path_single_run = f"{save_dir}{save_key}_method.pkl"
         file_path_all_runs = f"{save_dir}{save_key}steering_all_results.pkl"
+
+        print(
+            f"[INFO] nr samples (test, cal) ({task_config.nr_test_samples}, {task_config.nr_ref_samples})"
+        )
 
         ############################################
         ####### Load cached errors and lables ######
@@ -144,11 +185,11 @@ for model_name in model_names:
 
         # Load task-specific post-processed data for vanilla steering.
         y_targets = load_saved_data(
-            save_dir=f"../runs/{task_name}/{model_name.split('/')[1]}/",
-            save_key="3000",
+            save_dir=f"../runs/{dataset_name}/{model_name.split('/')[1]}/",
+            save_key=str(nr_training_samples),
             data_type="targets",
         )
-        # completions = load_saved_data(save_dir=f"../../MERA-development/runs/{task_name}/{model_name.split('/')[1]}/", save_key="3000", data_type="completions")
+        # completions = load_saved_data(save_dir=f"../../MERA-development/runs/{dataset_name}/{model_name.split('/')[1]}/", save_key="3000", data_type="completions")
         y_correct = [
             (pred == true).astype(int)
             for pred, true in zip(y_targets["y_pred"], y_targets[f"y_true"])
@@ -178,11 +219,11 @@ for model_name in model_names:
         ref_labels = dataset_handler.y_true_ref
 
         # Retrieve probe coefficients and contrastive pairs.
-        df_all_probes = post_process_df(
+        df_all_probes = postprocess_df_probes(
             pd.read_pickle(file_path_probes),
             filter_error_type=error_type,
-            filter_probe_token_pos=probe_token_pos.replace("_", "").capitalize(),
-            filter_inputs="Activations",
+            filter_probe_token_pos=probe_token_pos,
+            filter_inputs="activations",
         )
 
         ##########################################
@@ -204,7 +245,7 @@ for model_name in model_names:
                         range(nr_layers),
                         get_best_coefficients(
                             df_all_probes,
-                            task_name=task_name,
+                            dataset_name=dataset_name,
                             task=task,
                             metric=metric,
                             mode=steer_flag,
@@ -215,7 +256,7 @@ for model_name in model_names:
                 probe_layers[(task, steer_flag)] = get_best_layer(
                     df_all_probes,
                     task=task,
-                    task_name=task_name,
+                    dataset_name=dataset_name,
                     metric=metric,
                     mode=steer_flag,
                 )
@@ -267,7 +308,7 @@ for model_name in model_names:
             "tokenizer_kwargs": task_config.tokenizer_kwargs,
         }
         layers_settings = {
-            "all_layers": None,
+            "all_layers": list(range(nr_layers)),
             # "best_layer": [probe_best_layer],
             # "last_layer": [nr_layers],
         }
@@ -344,7 +385,7 @@ for model_name in model_names:
                             ),
                         ]
 
-                        # best_alpha_last, best_alpha_exact, best_metric_last, best_metric_exact, _ = get_best_alpha_from_searches(model_name.split("/")[1], task_name, threshold=threshold, method_name=method_name_ours)
+                        # best_alpha_last, best_alpha_exact, best_metric_last, best_metric_exact, _ = get_best_alpha_from_searches(model_name.split("/")[1], dataset_name, threshold=threshold, method_name=method_name_ours)
                         kwargs_mera = {
                             "eta": eta,
                             "alpha_range": list(np.linspace(1e-3, 0.99, 10)),
@@ -357,7 +398,7 @@ for model_name in model_names:
                             "apply_token_pos_to_steer": token_pos_to_steer,
                             "apply_layers_to_steer": layers_to_steer,
                             "objective_key": objective_key,
-                            "nr_samples": 210 if "mmlu" in task_name else 250,
+                            # "nr_samples": 210 if "mmlu" in dataset_name else 250,
                             "best_alpha_last": None,  # FIXME
                             "best_alpha_exact": None,  # FIXME.
                         }
@@ -367,6 +408,7 @@ for model_name in model_names:
                             kwargs_mera["probe_weights"] = probe_weights[
                                 (setting[0], setting[1])
                             ]
+
                             kwargs_mera["mode"] = mode
                             kwargs_mera["logging_calibration_table_key"] = method_name
                             kwargs_mera["logging_theta_table_key"] = method_name
@@ -437,13 +479,15 @@ for model_name in model_names:
             + [
                 (k, v)
                 for k, v in benchmark_list.items()
-                if any(method in k for method in valid_methods)
+                if any(
+                    k.startswith(method + "_") or k == method
+                    for method in valid_methods
+                )
             ]
         )
         print(
             f"[INFO] All benchmark keys: {len(benchmark_list)} steering method(s): {benchmark_list_filtered.keys()}"
         )
-        print(f"[DEBUG] Valid methods: {valid_methods}")
         print(
             f"[DEBUG] Testing subset of {len(benchmark_list_filtered)} steering method(s): {benchmark_list_filtered.keys()}"
         )
@@ -454,9 +498,8 @@ for model_name in model_names:
 
         all_keys = {
             "steering_key",
-            "task_name",
+            "dataset_name",
             "alpha_calibration_token_pos_target",
-            "error_type",
             "best_alpha",
         }
         for steering_key, steering_kwargs in benchmark_list_filtered.items():
@@ -473,10 +516,10 @@ for model_name in model_names:
         ####################################
 
         wandb.init(
-            project="MERA-development",
-            name=f"{task_name}-{model_name.split('/')[1]}-{fname}",
+            project="MERA",
+            name=f"{dataset_name}-{model_name.split('/')[1]}-{fname}",
             config={
-                "task_name": task_name,
+                "dataset_name": dataset_name,
                 "model_name": model_name.split("/")[1],
                 "nr_test_samples": task_config.nr_test_samples,
                 "nr_ref_samples": task_config.nr_ref_samples,
@@ -582,17 +625,19 @@ for model_name in model_names:
                     # Copy from overall_baseline metrics.
                     evaluation_metrics = deepcopy(evaluation_metrics_baseline)
 
+                print(f"DEBUG evaluation_metrics keys: {evaluation_metrics.keys()}")
+
                 if steering_key == "no_steering":
                     prefix = "overall_evaluation/"
                     overall_baseline = {
                         f"{prefix}{k}": evaluation_metrics[f"{prefix}{k}"]
                         for k in [
-                            "Accuracy",
-                            "F1 Score",
-                            "Recall",
-                            "Precision",
-                            "Error",
-                            "Correct Predictions",
+                            "Accuracy Last",
+                            "F1 Score Last",
+                            "Recall Last",
+                            "Precision Last",
+                            "Error Last",
+                            "Correct Predictions Last",
                             "Accuracy Exact",
                             "F1 Score Exact",
                             "Recall Exact",
@@ -617,17 +662,12 @@ for model_name in model_names:
                 single_results = {
                     **{
                         "steering_key": steering_key_with_target,
-                        "task_name": task_name,
+                        "dataset_name": dataset_name,
                         "alpha_calibration_token_pos_target": (
                             alpha_calibration_token_pos_target
                             if requires_dual_alpha
                             else ""
                         ),
-                        "error_type": error_type,
-                        "test_prompts": test_prompts,
-                        "test_labels": test_labels,
-                        # "best_metric_last": None, #FIXME
-                        # "best_metric_exact": None, # FIXME.
                         f"best_alpha{alpha_calibration_token_pos_target}": (
                             getattr(
                                 steering_init,
@@ -641,6 +681,9 @@ for model_name in model_names:
                     **steering_kwargs,
                     **evaluation_metrics,
                 }
+                single_results = {
+                    k: v for k, v in single_results.items() if "Correct" not in k
+                }  # Remove lists of corrections.
                 all_results_list.append(single_results)
                 print_single_results = {
                     k: v for k, v in single_results.items() if "overall_evaluation" in k
@@ -649,8 +692,8 @@ for model_name in model_names:
                     f"[INFO] Single results {steering_key_with_target}\n",
                     " ".join(
                         (
-                            f"{k.replace('overall_evaluation/', '')} {v.item():.3f}"
-                            if v.size == 1
+                            f"{k.replace('overall_evaluation/', '')} {v:.3f}"
+                            if isinstance(v, (float, int))
                             else f"{k.replace('overall_evaluation/', '')} {np.mean(v):.3f}"
                         )
                         for k, v in print_single_results.items()
@@ -679,6 +722,10 @@ for model_name in model_names:
                     f"[INFO] Steering results saved at: {file_path_single_run_method}.\n"
                 )
 
+                del single_results
+                torch.cuda.empty_cache()
+                gc.collect()
+
         # Logging!
         wandb.log({"overall_evaluation_results_table": results_table})
         wandb.finish()
@@ -690,4 +737,6 @@ for model_name in model_names:
 
     df_all_results = pd.DataFrame(all_results_list)
     df_all_results.to_csv(file_path_all_runs.replace(".pkl", ".csv"))
-    df_all_results.sort_values("overall_evaluation/Accuracy", ascending=False).head(20)
+    # df_all_results.sort_values("overall_evaluation/Accuracy", ascending=False).head(20)
+
+    del all_results_list, df_all_results

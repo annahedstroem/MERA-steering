@@ -12,13 +12,14 @@ from utils import *
 from cache.cache_utils import *
 from tasks.task_handler import *
 
+
 def main(
     hf_token: str,
     token_position: int,
     cache_dir: str,
     save_dir: str,
     model_name: str,
-    task_names: List[str],
+    dataset_names: List[str],
     nr_samples: int,
     batch_size: int,
     n_devices: int,
@@ -30,12 +31,12 @@ def main(
     verbose: bool = True,
 ) -> None:
 
-    for task_name in task_names:
+    for dataset_name in dataset_names:
 
         task_config = TaskConfig(
             token=hf_token,
             cache_dir=cache_dir,
-            task_name=task_name,
+            dataset_name=dataset_name,
             nr_samples=nr_samples,
             model_name=model_name,
             device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
@@ -49,10 +50,15 @@ def main(
         nr_layers = model_handler.nr_layers
 
         today = datetime.today().strftime("%Y%m%d")[2:]
-        save_dir += f"{task_name}/"
-        save_dir += f"{model_name.split('/')[1]}/"
-        os.makedirs(save_dir, exist_ok=True)  # uuid.uuid1().hex[:3]uuid
+        save_dir_curr = save_dir + f"{dataset_name}/"
+        save_dir_curr += f"{model_name.split('/')[1]}/"
+        os.makedirs(save_dir_curr, exist_ok=True)  # uuid.uuid1().hex[:3]uuid
         save_key = f"{nr_samples}_"
+
+        for i, p in enumerate(dataset_handler.prompts):
+            print(p)
+            if i == 5:
+                break
 
         # Step 1: Generate completions.
         completions = generate_completions(
@@ -64,7 +70,7 @@ def main(
             batch_size=batch_size,
             device=model_handler.model.device,
             flexible_match=task_config.flexible_match,
-            save_dir=save_dir,
+            save_dir=save_dir_curr,
             save_key=save_key,
             overwrite=overwrite,
         )
@@ -78,7 +84,7 @@ def main(
             position=None,
             flexible_match=task_config.flexible_match,
             dataset_info=dataset_handler.dataset_info,
-            save_dir=save_dir,
+            save_dir=save_dir_curr,
             save_key=save_key,
             overwrite=overwrite,
         )
@@ -91,7 +97,7 @@ def main(
             dataset_info=dataset_handler.dataset_info,
             prompt_sequence_lengths=completions["prompt_sequence_lengths"],
             match_indices=completions["match_indices"],
-            save_dir=save_dir,
+            save_dir=save_dir_curr,
             save_key=save_key,
             overwrite=overwrite,
         )
@@ -111,13 +117,13 @@ def main(
                 batch_size=batch_size,
                 mode="all",
                 nr_layers=nr_layers,
-                save_dir=save_dir,
+                save_dir=save_dir_curr,
                 save_key=save_key,
                 overwrite=overwrite,
             )
 
         if run_saes:
-            
+
             # Ugly solution, but only import SAE lens if necessary.
             from cache.cache_sae_utils import collect_saes
 
@@ -131,7 +137,7 @@ def main(
                 batch_size=batch_size,
                 n_devices=6,
                 nr_layers=nr_layers,
-                save_dir=save_dir,
+                save_dir=save_dir_curr,
                 save_key=save_key,
                 overwrite=overwrite,
                 hf_token=hf_token,
@@ -176,7 +182,7 @@ if __name__ == "__main__":
         help="Name of the model to load.",
     )
     parser.add_argument(
-        "--task_names",
+        "--dataset_names",
         type=str,
         nargs="+",
         default=["mmlu_high_school"],
@@ -222,7 +228,7 @@ if __name__ == "__main__":
         args.cache_dir,
         args.save_dir,
         args.model_name,
-        args.task_names,
+        args.dataset_names,
         args.nr_samples,
         args.batch_size,
         args.n_devices,

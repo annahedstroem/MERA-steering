@@ -10,7 +10,6 @@ from torch.optim import Adam
 
 import wandb
 from contextlib import nullcontext
-from scipy.special import expit, logit
 
 from tasks.task_handler import *
 from cache.cache_utils import *
@@ -40,17 +39,15 @@ class Steering:
         self.b = self.steering_kwargs.get("b", {})
         self.k = self.steering_kwargs.get("k", 0)
         self.apply_layers_to_steer = self.steering_kwargs.get(
-            "apply_layers_to_steer", None
+            "apply_layers_to_steer", list(range(len(self.model.model.layers)))
         )
-        if self.apply_layers_to_steer is None:
-            self.apply_layers_to_steer = list(range(len(self.model.model.layers)))
         self.apply_token_pos_to_steer = self.steering_kwargs.get(
             "apply_token_pos_to_steer", None
         )
         self.mean_centered = self.steering_kwargs.get("mean_centered", False)
         self.no_steering = self.steering_kwargs.get("no_steering", False)
 
-        self.debug = self.steering_kwargs.get("debug", True) #FIXME
+        self.debug = self.steering_kwargs.get("debug", True)  # FIXME
 
         if self.a and self.b:
             self.contrastive_vector = self.compute_diff_in_means
@@ -165,6 +162,7 @@ class Steering:
         return steering_vector
 
     def steer(self, activations: torch.Tensor, layer_idx: int) -> torch.Tensor:
+        """Steer the activations."""
         if self.no_steering:
             return activations
         steering_vector = self.contrastive_vector.get(
@@ -185,7 +183,7 @@ class Steering:
         self,
         prompts,
         labels,
-        #errors_baselines: Optional[Tuple[Optional[np.array], Optional[np.array]]] = None,
+        # errors_baselines: Optional[Tuple[Optional[np.array], Optional[np.array]]] = None,
         grad: bool = False,
         post_process: bool = True,
         prefix="inner_evaluation/",
@@ -198,13 +196,15 @@ class Steering:
     ) -> Tuple[Dict, Dict, Dict]:
         """Run the pipeline with optional context."""
         prompts = self.preprocess_prompts(prompts)
-        
+
         assert not (
             alpha_value is not None and alpha_calibration_token_pos_target is not None
         ), "You must provide only one of 'alpha_value' or 'alpha_calibration_token_pos_target', not both."
 
         if alpha_value is not None:
             self.alpha_value = alpha_value
+            print(f"Current self.alpha_value {self.alpha_value}")
+
         elif alpha_calibration_token_pos_target is not None:
             if alpha_calibration_token_pos_target == "last":
                 self.alpha_value = getattr(self, "best_alpha_last")  # , 1.0
@@ -220,6 +220,7 @@ class Steering:
         else:
             self.enable_theta_tracking = False
 
+        # Steering is applied within the self context.
         with self:
             completions = generate_completions(
                 model=self.model,
@@ -276,31 +277,19 @@ class Steering:
 
         if post_process:
             prefix = f"{prefix}"
-            
+
             # Append all the metrics!
             evaluation_metrics = {}
             evaluation_metrics.update(compute_error_metrics(targets, prefix))
-            evaluation_metrics.update(compute_classification_metrics(labels, targets, prefix))
-            evaluation_metrics.update(compute_transition_metrics(targets, prefix))
-            
-            if log_with_wandb:
+            evaluation_metrics.update(
+                compute_classification_metrics(labels, targets, prefix)
+            )
+
+            if self.log_with_wandb:
                 wandb.log(evaluation_metrics)
-                
+
             self.add_analysis()
 
             return evaluation_metrics
 
         return targets
-
-    def apply_mean_magnitude_scaling(
-        self, vector: torch.Tensor, activations: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Adjust the probe coefficients using global mean L2 magnitude of activations.
-        """
-        activation_magnitude = torch.norm(activations, p=2, dim=(0, 1))
-        vector_magnitude = torch.norm(vector, p=2)
-        scaling_factor = activation_magnitude / (vector_magnitude + 1e-8)
-        if self.debug:
-            print(f"Scaling Factor (Layer {layer_idx}): {scaling_factor.item()}")
-        return vector * scaling_factor

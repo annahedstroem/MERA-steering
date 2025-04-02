@@ -59,12 +59,15 @@ class SteeringByProbe(Steering):
             "derive_with_sigmoid", False
         )
         self.derive_with_logit = self.steering_kwargs.get("derive_with_logit", True)
-        self.probe_vector = self.probe_weights
         self.internal_projections = {
             layer_idx: [] for layer_idx in self.steering_kwargs["probe_weights"]
         }
 
         self.normalise_coeffs = self.steering_kwargs.get("normalise_coeffs", False)
+
+        self.apply_layers_to_steer = self.steering_kwargs.get(
+            "apply_layers_to_steer", None
+        )
 
         if self.apply_layers_to_steer is None:
             self.apply_layers_to_steer = list(self.probe_weights.keys())
@@ -84,65 +87,8 @@ class SteeringByProbe(Steering):
         )
 
         if self.debug:
-            print("Layers to steer:", self.apply_layers_to_steer)
-
-    def derive_closed_form_vector(
-        self,
-        activations: torch.Tensor,
-        vector: torch.Tensor,
-    ) -> torch.Tensor:
-
-        assert (
-            self.alpha_value is not None
-        ), "'alpha_value' cannot be None in 'derive_closed_form_vector' func."
-
-        # Compute the dot product per token position (batch_size, token_positions).
-        wTx = torch.matmul(
-            activations.to(self.model.device), vector.to(self.model.device)
-        )
-        wTx_transformed = wTx
-        if self.derive_with_sigmoid:
-            wTx_transformed = torch.special.expit(wTx)
-
-        alpha_transformed = self.alpha_value
-        if self.derive_with_logit:
-            alpha_transformed = torch.special.logit(
-                torch.tensor(
-                    self.alpha_value, dtype=torch.float32, device=self.model.device
-                )
-            )
-
-        # Check if condition is true per token position (batch_size, token_positions).
-        condition = wTx_transformed > alpha_transformed
-
-        # Derive the optimal value.
-        theta = (
-            (alpha_transformed - wTx_transformed) / torch.norm(vector, p=2) ** 2 + 1e-8
-        ).unsqueeze(-1) * vector.unsqueeze(0).unsqueeze(0)
-
-        # if self.debug:
-        #    print(
-        #        f"[DEBUG] In 'derive_closed_form_vector' — Using alpha_value {self.alpha_value} \
-        #        | derive_with_sigmoid {self.derive_with_sigmoid} \
-        #        | derive_with_logit {self.derive_with_logit} \
-        #        | derive_with_all {self.derive_with_all}"
-        #    )
-
-        # Return the value for all token positions or the last including the generation.
-        if self.derive_with_all:
-            optimal_theta = torch.where(
-                condition.unsqueeze(-1).to(self.model.device),
-                theta.to(self.model.device),
-                torch.zeros_like(activations).to(self.model.device),
-            ).to(self.model.device)
-        else:
-            optimal_theta = torch.where(
-                condition[:, -1].unsqueeze(-1).to(self.model.device),
-                theta[:, -1, :].to(self.model.device),
-                torch.zeros_like(vector).to(self.model.device),
-            ).to(self.model.device)
-
-        return optimal_theta, theta, condition
+            print("[INFO] Layers to steer:", self.apply_layers_to_steer)
+            print("[INFO] Probe weights:", self.probe_weights)
 
     def steer(self, activations: torch.Tensor, layer_idx: int) -> torch.Tensor:
         """Main functionality that steerst the model on a token position and layer basis."""

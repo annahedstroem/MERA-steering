@@ -34,6 +34,11 @@ class MERA(SteeringByProbe):
         super().__init__(
             model, tokenizer, tokenizer_kwargs, dataset_info, steering_kwargs
         )
+        self.METRIC_KEYS = ["Accuracy", "F1 Score", "Recall", "Precision", "Error"]
+        self.TOKEN_POS = ["Last", "Exact"]
+        self.METRIC_KEYS_FULL = [
+            f"{k} {p}" for k in self.METRIC_KEYS for p in self.TOKEN_POS
+        ]
 
         # Alpha grid search parameters.
         self.prefix = self.steering_kwargs.get("prefix", "inner_evaluation/")
@@ -46,13 +51,9 @@ class MERA(SteeringByProbe):
         self.nr_samples = self.steering_kwargs.get("nr_samples", 250)
         self.enable_constraint = self.steering_kwargs.get("enable_constraint", True)
         self.constraint_value = self.steering_kwargs.get("constraint_value", 2)
-        self.objective_key = self.steering_kwargs.get(
-            "objective_key", f"{self.prefix}Accuracy"
-        )
-        self.objective_key_exact = self.steering_kwargs.get(
-            "objective_key_exact", self.objective_key + " Exact"
-        )
-        self.refine_best_alpha = self.steering_kwargs.get("refine_best_alpha", False)
+        self.objective_key = self.steering_kwargs.get("objective_key", f"Accuracy")
+        self.objective_key = f"{self.prefix}{self.objective_key}"
+        self.objective_key_exact = self.objective_key + " Exact"
         self.ref_prompts = self.steering_kwargs.get("ref_prompts", [])
         self.ref_labels = self.steering_kwargs.get("ref_labels", [])
 
@@ -62,13 +63,9 @@ class MERA(SteeringByProbe):
         self.best_metric_exact = self.steering_kwargs.get("best_metric_exact", None)
 
         # FIXME LATER.
-        if (
-            self.refine_best_alpha
-            or self.best_alpha_last is None
-            or self.best_alpha_exact is None
-        ):
-            print("\n[CALIBRATION] Searching for alpha...")
-            self.calibration_alpha()
+        if self.best_alpha_last is None or self.best_alpha_exact is None:
+            print("\n[INFO] Calibrating alpha...")
+            self.calibrate_alpha()
         else:
             print(
                 "\n[SKIPPING GRID SEARCH] Using precomputed best_alpha. Skipping redundant evaluation."
@@ -82,7 +79,7 @@ class MERA(SteeringByProbe):
             )
 
         if self.mode == "optimal_probe":
-            optimal_theta, theta, condition = self.derive_closed_form_vector(
+            optimal_theta, theta, condition = self.optimise_steering_closed_form(
                 activations, self.probe_weights[layer_idx]
             )  # , apply_sigmoid=True)
             if self.enable_theta_tracking:
@@ -92,7 +89,7 @@ class MERA(SteeringByProbe):
             )
 
         elif self.mode == "optimal_contrastive":
-            optimal_theta, theta, condition = self.derive_closed_form_vector(
+            optimal_theta, theta, condition = self.optimise_steering_closed_form(
                 activations, self.contrastive_vector[layer_idx]
             )
             if self.enable_theta_tracking:
@@ -103,7 +100,9 @@ class MERA(SteeringByProbe):
                 self.model.device
             )
 
-        elif self.mode == "internal_projection":
+        elif (
+            self.mode == "internal_projection"
+        ):  # used for token position analysis in the paper
             if self.internal_projection_with_contrastive:
                 steering_vector = self.contrastive_vector.get(
                     layer_idx, torch.zeros_like(activations).to(self.model.device)
@@ -113,190 +112,209 @@ class MERA(SteeringByProbe):
                 )
 
             elif self.internal_projection_with_probe:
-                probe_vector = self.probe_vector.get(
+                probe_weights = self.probe_weights.get(
                     layer_idx, torch.zeros_like(activations).to(self.model.device)
                 )
                 self.internal_projections[layer_idx].append(
-                    torch.matmul(activations.to(self.model.device), probe_vector)
+                    torch.matmul(activations.to(self.model.device), probe_weights)
                 )
 
-        print("[DEBUG] Returning unsteered activations, as no 'mode' matched the implementation.")
+        print(
+            "[DEBUG] Returning unsteered activations, as no 'mode' matched the implementation."
+        )
         return activations
 
-    def calibration_alpha(self) -> None:
-        """
-        Perform grid search over alpha to calibrate the value the objective.
-        """
+    def optimise_steering_closed_form(
+        self,
+        activations: torch.Tensor,
+        vector: torch.Tensor,
+    ) -> torch.Tensor:
 
-        if (
-            self.refine_best_alpha
-            or self.best_alpha_last is None
-            or self.best_alpha_exact is None
-        ):
+        assert (
+            self.alpha_value is not None
+        ), "'alpha_value' cannot be None in 'optimise_steering_closed_form' func."
 
-            assert self.objective_key in [
-                "Accuracy",
-                "F1 Score",
-                "Recall",
-                "Precision",
-                "Error",
-                "Error Exact",
-                "Accuracy Exact",
-                "F1 Score Exact",
-                "Recall Exact",
-                "Precision Exact",
-            ], f"Invalid objective_key: {self.objective_key}"
+        # Compute the dot product per token position (batch_size, token_positions).
+        wTx = torch.matmul(
+            activations.to(self.model.device), vector.to(self.model.device)
+        )
+        wTx_transformed = wTx
+        if self.derive_with_sigmoid:
+            wTx_transformed = torch.special.expit(wTx)
 
-            # Step 1. Establish reference baseline of the objective!
-            print("[INFO] Evaluating reference performance without steering...")
-            ref_metrics = self.evaluate(
-                prompts=self.ref_prompts, labels=self.ref_labels, alpha_value=1.0, prefix="inner_evaluation/"
-            )
-            ref_metric_value_last = ref_metrics.get(f"{self.prefix}{self.objective_key}", None)
-            ref_metric_value_exact = ref_metrics.get(f"{self.prefix}{self.objective_key_exact}", None)
-            ref_y_correct = ref_metrics[f"{self.prefix}Correct Predictions"]
-            ref_y_correct_exact = ref_metrics[f"{self.prefix}Correct Predictions Exact"]
-
-            if ref_metric_value_last is None or ref_metric_value_exact is None:
-                raise ValueError(
-                    f"Objective keys '{self.objective_key}' or '{self.objective_key_exact}' not found in reference metrics."
+        alpha_transformed = self.alpha_value
+        if self.derive_with_logit:
+            alpha_transformed = torch.special.logit(
+                torch.tensor(
+                    self.alpha_value, dtype=torch.float32, device=self.model.device
                 )
-            print(
-                f"[CALIBRATION] Reference Last {self.objective_key}: {ref_metric_value_last:.4f}"
-            )
-            print(
-                f"[CALIBRATION] Reference Exact {self.objective_key_exact}: {ref_metric_value_exact:.4f}"
             )
 
-            # Step 2. Calibrate alpha.
-            master_metrics = {}
-            alpha_results_table = wandb.Table(
-                columns=[
-                    "Alpha",
-                    "Type",
-                    "Reference Last",
-                    "Metric",
-                    "Delta",
-                    "Corrections Total Last",
-                    "Corrections Percentage Last",
-                    "Reference Exact",
-                    "Metric Exact",
-                    "Delta Exact",
-                    "Corrections Total Exact",
-                    "Corrections Percentage Exact",
-                ]
+        # Check if condition is true per token position (batch_size, token_positions).
+        condition = wTx_transformed > alpha_transformed
+
+        # Derive the optimal value.
+        theta = (
+            (alpha_transformed - wTx_transformed) / torch.norm(vector, p=2) ** 2 + 1e-8
+        ).unsqueeze(-1) * vector.unsqueeze(0).unsqueeze(0)
+
+        # if self.debug:
+        #    print(
+        #        f"[DEBUG] In 'optimise_steering_closed_form' — Using alpha_value {self.alpha_value} \
+        #        | derive_with_sigmoid {self.derive_with_sigmoid} \
+        #        | derive_with_logit {self.derive_with_logit} \
+        #        | derive_with_all {self.derive_with_all}"
+        #    )
+
+        # Return the value for all token positions or the last including the generation.
+        if self.derive_with_all:
+            optimal_theta = torch.where(
+                condition.unsqueeze(-1).to(self.model.device),
+                theta.to(self.model.device),
+                torch.zeros_like(activations).to(self.model.device),
+            ).to(self.model.device)
+        else:
+            optimal_theta = torch.where(
+                condition[:, -1].unsqueeze(-1).to(self.model.device),
+                theta[:, -1, :].to(self.model.device),
+                torch.zeros_like(vector).to(self.model.device),
+            ).to(self.model.device)
+
+        return optimal_theta, theta, condition
+
+    def create_alpha_results_table(self) -> wandb.Table:
+        """Create wandb Table with all metric columns."""
+        columns = (
+            ["Alpha", "Type", "Best Alpha Last", "Best Alpha Exact"]
+            + [f"Reference {k}" for k in self.METRIC_KEYS_FULL]
+            + [f"Current {k}" for k in self.METRIC_KEYS_FULL]
+            + [f"Delta {k}" for k in self.METRIC_KEYS_FULL]
+        )
+        return wandb.Table(columns=columns)
+
+    def compute_metric_deltas(self, current: dict, reference: dict) -> Dict[str, float]:
+        """Compute metric deltas from current and reference values."""
+        deltas = {}
+        for key in self.METRIC_KEYS_FULL:
+            cur = current.get(f"{self.prefix}{key}", None)
+            ref = reference.get(f"{self.prefix}{key}", None)
+            if cur is None or ref is None:
+                deltas[key] = None
+            else:
+                # Maximize all but Error.
+                deltas[key] = cur - ref if key != "Error" else ref - cur
+        return deltas
+
+    def log_metrics_to_wandb_table(
+        self,
+        table: wandb.Table,
+        alpha: float,
+        search_type: str,
+        ref: dict,
+        current: dict,
+        deltas: dict,
+        best_alpha_last: float,
+        best_alpha_exact: float,
+    ) -> None:
+        """Add one row of metrics to wandb table."""
+        row = [alpha, search_type, best_alpha_last, best_alpha_exact]
+        for key in self.METRIC_KEYS_FULL:
+            row.append(ref.get(f"{self.prefix}{key}", None))
+        for key in self.METRIC_KEYS_FULL:
+            row.append(current.get(f"{self.prefix}{key}", None))
+        for key in self.METRIC_KEYS_FULL:
+            row.append(deltas.get(key, None))
+        table.add_data(*row)
+
+    def compute_and_log_metrics(
+        self,
+        alpha: float,
+        ref_metrics: dict,
+        current_metrics: dict,
+        alpha_results_table: wandb.Table,
+        search_type: str,
+        best_alpha_last: float,
+        best_alpha_exact: float,
+    ) -> Dict[str, float]:
+        """Compute deltas and log all evaluation metrics into WandB."""
+        print(f"[INFO] Logging alpha={alpha:.3f} metrics to WandB table.")
+
+        deltas = self.compute_metric_deltas(current_metrics, ref_metrics)
+        self.log_metrics_to_wandb_table(
+            table=alpha_results_table,
+            alpha=alpha,
+            search_type=search_type,
+            ref=ref_metrics,
+            current=current_metrics,
+            deltas=deltas,
+            best_alpha_last=best_alpha_last,
+            best_alpha_exact=best_alpha_exact,
+        )
+
+        return deltas
+
+    def perform_calibration(
+        self,
+        alpha_ranges: List[float],
+        ref_metrics: dict,
+        best_metrics: Dict[str, float],
+        best_alphas: Dict[str, float],
+        improved: Dict[str, bool],
+        alpha_results_table: wandb.Table,
+        search_type: str,
+    ) -> Tuple[Dict[str, float], Dict[str, float], Dict[str, bool]]:
+        """Perform alpha grid search and log metrics."""
+        for alpha in alpha_ranges:
+
+            print(f"[INFO] Evaluating alpha_value: {alpha:.3f}")
+            current_metrics = self.evaluate(
+                prompts=self.ref_prompts,
+                labels=self.ref_labels,
+                alpha_value=alpha,
+                prefix="inner_evaluation/",
             )
 
-        if self.best_alpha_last is None or self.best_alpha_exact is None:
+            for pos in self.TOKEN_POS:
+                for metric_key in self.METRIC_KEYS:
+                    full_key = f"{self.prefix}{metric_key} {pos}"
+                    current_val = current_metrics[full_key]
+                    if (
+                        metric_key == "Error"
+                        and current_val <= best_metrics[pos][metric_key]
+                    ):
+                        best_metrics[pos][metric_key] = current_val
+                        best_alphas[pos][metric_key] = alpha
+                        improved[pos][metric_key] = True
+                    elif (
+                        metric_key != "Error"
+                        and current_val >= best_metrics[pos][metric_key]
+                    ):
+                        best_metrics[pos][metric_key] = current_val
+                        best_alphas[pos][metric_key] = alpha
+                        improved[pos][metric_key] = True
+                    print(
+                        f"[DEBUG] {metric_key} {pos} | Current: {current_val:.3f} | Best: {best_metrics[pos][metric_key]:.3f}"
+                    )
 
-            print("\n[CALIBRATION] Searching for alpha...")
-            # Step 3. Perform tbe actual grid search!
-            (
+            # Select which alphas to use during actual steering!
+            key = self.objective_key.replace(self.prefix, "")
+            best_alpha_last = best_alphas["Last"][key]
+            best_alpha_exact = best_alphas["Exact"][key]
+
+            deltas = self.compute_and_log_metrics(
+                alpha,
+                ref_metrics,
+                current_metrics,
+                alpha_results_table,
+                search_type,
                 best_alpha_last,
                 best_alpha_exact,
-                best_metric_last,
-                best_metric_exact,
-                improved_last,
-                improved_exact,
-            ) = self.perform_calibration(
-                alpha_ranges=self.alpha_range,
-                best_alpha_last=1.0,
-                best_metric_last=ref_metric_value_last,
-                best_alpha_exact=1.0,
-                best_metric_exact=ref_metric_value_exact,
-                improved_last=False,
-                improved_exact=False,
-                master_metrics=master_metrics,
-                ref_metric_value_last=ref_metric_value_last,
-                ref_metric_value_exact=ref_metric_value_exact,
-                ref_y_correct=ref_y_correct,
-                ref_y_correct_exact=ref_y_correct_exact,
-                alpha_results_table=alpha_results_table,
-                search_type="Base",
             )
 
-        # FIXME
-        # Step 4. Perform refined search!
-        if (
-            self.refine_best_alpha
-            and self.best_alpha_last != 1.0
-            or self.best_alpha_exact != 1.0
-        ):
+            print(f"[INFO] Best metrics so far: {best_metrics}")
+            print(f"[INFO] Best alphas so far: {best_alpha_last} | {best_alpha_exact}")
 
-            refined_candidates = []
-            for best_alpha in [best_alpha_last, best_alpha_exact]:
-                low, high = self.find_neighbour_midpoints(
-                    alpha=best_alpha, alpha_range=self.alpha_range
-                )
-                if low is not None:
-                    refined_candidates.append(low)
-                if high is not None:
-                    refined_candidates.append(high)
-            refined_candidates = sorted(np.unique(refined_candidates))
-            print(
-                f"[CALIBRATION] Refining alpha search with midpoints to closest neighbours... {refined_candidates}"
-            )
-            (
-                best_alpha_last,
-                best_alpha_exact,
-                best_metric_last,
-                best_metric_exact,
-                improved_last,
-                improved_exact,
-            ) = self.perform_calibration(
-                alpha_ranges=refined_candidates,
-                best_alpha_last=best_alpha_last,
-                best_metric_last=best_metric_last,
-                best_alpha_exact=best_alpha_exact,
-                best_metric_exact=best_metric_exact,
-                improved_last=improved_last,
-                improved_exact=improved_exact,
-                master_metrics=master_metrics,
-                ref_metric_value_last=ref_metric_value_last,
-                ref_metric_value_exact=ref_metric_value_exact,
-                ref_y_correct=ref_y_correct,
-                ref_y_correct_exact=ref_y_correct_exact,
-                alpha_results_table=alpha_results_table,
-                search_type="Refined",
-            )
-
-        # Step 5. Apply decision rule!
-        self.set_alpha_attrs(
-            improved_last,
-            ref_metric_value_last,
-            best_alpha_last,
-            best_metric_last,
-            alpha_calibration_token_pos_target="last",
-        )
-        self.set_alpha_attrs(
-            improved_exact,
-            ref_metric_value_exact,
-            best_alpha_exact,
-            best_metric_exact,
-            alpha_calibration_token_pos_target="exact",
-        )
-
-        print(
-            f"[CALIBRATION] Best Last Alpha: {best_alpha_last} | {self.objective_key}: {best_metric_last:.4f}"
-        )
-        print(
-            f"[CALIBRATION] Best Exact Alpha: {best_alpha_exact} | {self.objective_key}: {best_metric_exact:.4f}."
-        )
-
-        if self.log_with_wandb:
-            wandb.log(
-                {
-                    f"alpha_search_results_table/{self.logging_calibration_table_key}": alpha_results_table
-                }
-            )
-            print(
-                f"[DEBUG] Logged table under alpha_search_results_table/{self.logging_calibration_table_key}"
-            )
-
-        self.disable_tdqm = False
-        print("[INFO] Alpha Grid Search Completed.\n")
-
-        return None
+        return best_alphas, best_metrics, improved
 
     def set_alpha_attrs(
         self,
@@ -329,350 +347,69 @@ class MERA(SteeringByProbe):
                 f"best_metric_{alpha_calibration_token_pos_target}"
             ] = best_metric
 
-    def find_neighbour_midpoints(
-        self, alpha: float, alpha_range: List[float]
-    ) -> Tuple[Optional[float], Optional[float]]:
-        """Find one midpoint with the closest lower and one with the closest upper neighbour of alpha."""
-        sorted_alphas = sorted(alpha_range)
-        lower = max((a for a in sorted_alphas if a < alpha), default=None)
-        upper = min((a for a in sorted_alphas if a > alpha), default=None)
-
-        lower_midpoint = (alpha + lower) / 2 if lower is not None else None
-        upper_midpoint = (alpha + upper) / 2 if upper is not None else None
-
-        return lower_midpoint, upper_midpoint
-
-    def perform_calibration(
-        self,
-        alpha_ranges: list,
-        best_alpha_last: float,
-        best_metric_last: float,
-        best_alpha_exact: float,
-        best_metric_exact: float,
-        improved_last: bool,
-        improved_exact: bool,
-        master_metrics: dict,
-        ref_metric_value_last: float,
-        ref_metric_value_exact: float,
-        ref_y_correct: float,
-        ref_y_correct_exact: float,
-        alpha_results_table,
-        search_type: str,
-        early_stopping: bool = False,
-        patience: int = 5,
-        min_alpha_steps: int = 3,
-    ):
-        """Perform the actual grid search!"""
-        steps_last = 0
-        steps_exact = 0
-
-        for alpha_step, alpha in tqdm(
-            enumerate(alpha_ranges),
-            desc=f"{search_type} Grid Search Alpha...",
-            leave=True,
-            disable=False,
-        ):
-
-            self.disable_tdqm = False
-
-            # Evaluate with current alpha!
-            print(
-                f"[CALIBRATION] Evaluating with current alpha_value: {alpha:.3f} ... "
-            )
-            print(
-                f"[INFO] Evaluating with objective: {self.objective_key} and {self.objective_key_exact}"
-            )
-            
-            metrics = self.evaluate(
-                prompts=self.ref_prompts,
-                labels=self.ref_labels,
-                alpha_value=alpha,
-                disable_tdqm=True,
-                prefix="inner_evaluation/"
-            )
-
-            # Add metrics.
-            master_metrics[alpha] = metrics
-            current_metric_last = metrics.get(f"{self.prefix}{self.objective_key}", None)
-            current_metric_exact = metrics.get(f"{self.prefix}{self.objective_key_exact}", None)
-
-            if current_metric_last is None or current_metric_exact is None:
-                raise ValueError(f"Evaluation metrics are missing expected keys.")
-
-            # Compute deltas.
-            delta = (
-                current_metric_last - ref_metric_value_last
-                if (
-                    ("Accuracy" in self.objective_key)
-                    or ("F1 Score" in self.objective_key)
-                    or ("Recall" in self.objective_key)
-                    or ("Precision" in self.objective_key)
-                )
-                else ref_metric_value_last - current_metric_last
-            )
-            delta_exact = (
-                current_metric_exact - ref_metric_value_exact
-                if (
-                    ("Accuracy Exact" in self.objective_key)
-                    or ("F1 Score Exact" in self.objective_key)
-                    or ("Recall Exact" in self.objective_key)
-                    or ("Precision Exact" in self.objective_key)
-                )
-                else ref_metric_value_exact - current_metric_exact
-            )
-
-            # Update Best Metric!
-            if (
-                ("Accuracy" in self.objective_key)
-                or ("F1 Score" in self.objective_key)
-                or ("Recall" in self.objective_key)
-                or ("Precision" in self.objective_key)
-            ) and current_metric_last > best_metric_last:
-                best_metric_last = current_metric_last
-                best_alpha_last = alpha
-                improved_last = True
-                steps_last = 0
-            elif (
-                "Error" in self.objective_key and current_metric_last < best_metric_last
-            ):
-                best_metric_last = current_metric_last
-                best_alpha_last = alpha
-                improved_last = True
-                steps_last = 0
-            else:
-                if alpha_step >= min_alpha_steps - 1:
-                    steps_exact += 1
-
-            # Update Best Metric
-            if (
-                ("Accuracy Exact" in self.objective_key)
-                or ("F1 Score Exact" in self.objective_key)
-                or ("Recall Exact" in self.objective_key)
-                or ("Precision Exact" in self.objective_key)
-            ) and current_metric_exact > best_metric_exact:
-                best_metric_exact = current_metric_exact
-                best_alpha_exact = alpha
-                improved_exact = True
-                steps_exact = 0
-            elif (
-                "Error" in self.objective_key_exact
-                and current_metric_exact < best_metric_exact
-            ):
-                # and current_metric_exact > np.sqrt(np.log(2/0.05)/(2*self.nr_samples)):
-                best_metric_exact = current_metric_exact
-                best_alpha_exact = alpha
-                improved_exact = True
-                steps_exact = 0
-            else:
-                if alpha_step >= min_alpha_steps - 1:
-                    steps_exact += 1
-
-            print(
-                f"[CALIBRATION] Alpha: {alpha:.3f} | Current Metric Last: {current_metric_last:.4f} | Delta Last: {delta:.4f}"
-            )
-            print(
-                f"[CALIBRATION] Alpha: {alpha:.3f} | Current Metric Exact: {current_metric_exact:.4f} | Delta Exact: {delta_exact:.4f}"
-            )
-
-            # Add to wandb table.
-            alpha_results_table.add_data(
-                alpha,
-                search_type,
-                ref_metric_value_last,
-                current_metric_last,
-                delta,
-                np.sum(metrics[f"{self.prefix}Correct Predictions"])
-                - np.sum(ref_y_correct),
-                (
-                    (
-                        np.sum(metrics[f"{self.prefix}Correct Predictions"])
-                        / np.sum(ref_y_correct)
-                    )
-                    if np.sum(ref_y_correct) != 0
-                    else 0.0
-                ),
-                ref_metric_value_exact,
-                current_metric_exact,
-                delta_exact,
-                np.sum(metrics[f"{self.prefix}Correct Predictions Exact"])
-                - np.sum(ref_y_correct_exact),
-                (
-                    (
-                        np.sum(metrics[f"{self.prefix}Correct Predictions Exact"])
-                        / np.sum(ref_y_correct_exact)
-                    )
-                    if np.sum(ref_y_correct_exact) != 0
-                    else 0.0
-                ),
-            )
-            if np.isclose(delta, 0, rtol=1e-3) and steps_last >= min_alpha_steps - 1:
-                steps_last += 1
-            if (
-                np.isclose(delta_exact, 0, rtol=1e-3)
-                and steps_exact >= min_alpha_steps - 1
-            ):
-                steps_exact += 1
-
-            if early_stopping and steps_last >= patience and steps_exact >= patience:
-                print(
-                    f"[CALIBRATION] Early stopping! No change identified in Last and Exact for {patience} steps."
-                )
-                break
-
-        print(
-            f"[CALIBRATION] Best Last Alpha: {best_alpha_last:.3f} | Best Metric Last: {best_metric_last:.4f} | Improved Last: {improved_last}"
+    def calibrate_alpha(self) -> None:
+        """Main entry to trigger alpha calibration."""
+        ref_metrics = self.evaluate(
+            prompts=self.ref_prompts,
+            labels=self.ref_labels,
+            alpha_value=1.0,
+            prefix=self.prefix,
         )
-        print(
-            f"[CALIBRATION] Best Exact Alpha: {best_alpha_exact:.3f} | Best Metric Exact: {best_metric_exact:.4f} | Improved Exact: {improved_exact}"
+        best_metrics = {
+            pos: {k: ref_metrics[f"{self.prefix}{k} {pos}"] for k in self.METRIC_KEYS}
+            for pos in self.TOKEN_POS
+        }
+        best_alphas = {
+            pos: {k: 1.0 for k in self.METRIC_KEYS} for pos in self.TOKEN_POS
+        }
+        improved = {pos: {k: False for k in self.METRIC_KEYS} for pos in self.TOKEN_POS}
+
+        alpha_results_table = self.create_alpha_results_table()
+
+        best_alphas, best_metrics, improved = self.perform_calibration(
+            alpha_ranges=self.alpha_range,
+            ref_metrics=ref_metrics,
+            best_metrics=best_metrics,
+            best_alphas=best_alphas,
+            improved=improved,
+            alpha_results_table=alpha_results_table,
+            search_type="Base",
         )
 
-        return (
-            best_alpha_last,
-            best_alpha_exact,
-            best_metric_last,
-            best_metric_exact,
-            improved_last,
-            improved_exact,
+        if self.log_with_wandb:
+            wandb.log(
+                {
+                    f"alpha_search_results_table/{self.logging_calibration_table_key}": alpha_results_table
+                }
+            )
+            print(
+                f"[DEBUG] Logged table under alpha_search_results_table/{self.logging_calibration_table_key}"
+            )
+
+        self.best_alpha_results = best_alphas
+        self.best_metric_results = best_metrics
+
+        key = self.objective_key.replace(self.prefix, "")
+        self.set_alpha_attrs(
+            improved=improved["Last"][key],
+            ref_value=ref_metrics[f"{self.objective_key} Last"],
+            best_alpha=self.best_alpha_results["Last"][key],
+            best_metric=self.best_metric_results["Last"][key],
+            alpha_calibration_token_pos_target="last",
+        )
+        self.set_alpha_attrs(
+            improved=improved["Exact"][key],
+            ref_value=ref_metrics[f"{self.objective_key_exact}"],
+            best_alpha=self.best_alpha_results["Exact"][key],
+            best_metric=self.best_metric_results["Exact"][key],
+            alpha_calibration_token_pos_target="exact",
         )
 
     def get_alpha_results(self) -> List[Tuple[float, float]]:
-        """
-        Retrieve the results from the alpha grid search.
-
-        Returns:
-            List of tuples (alpha, metric_value).
-        """
-        if hasattr(self, "alpha_search_results"):
-            return self.alpha_search_results
+        """Retrieve the results from the alpha grid search."""
+        if hasattr(self, "best_alpha_results"):
+            return list(self.best_alpha_results.items())
         else:
             raise ValueError(
                 "No alpha search results found. Run calibration_alpha() first."
             )
-
-    def enable_theta_statistics(self, layer_idx: int, suffixes: List[str]) -> None:
-        """Ensure theta_statistics is initialised for a given layer with dynamic suffixes."""
-        if not hasattr(self, "theta_statistics") or not isinstance(
-            self.theta_statistics, dict
-        ):
-            self.theta_statistics = {}
-        if layer_idx not in self.theta_statistics:
-            self.theta_statistics[layer_idx] = {}
-            for suffix in suffixes:
-                self.theta_statistics[layer_idx][f"Count-{suffix}"] = 0
-                self.theta_statistics[layer_idx][f"Nonzero-Count-{suffix}"] = 0
-                self.theta_statistics[layer_idx][f"Norms-{suffix}"] = []
-                self.theta_statistics[layer_idx][f"Min-{suffix}"] = float("inf")
-                self.theta_statistics[layer_idx][f"Max-{suffix}"] = float("-inf")
-                self.theta_statistics[layer_idx][f"Optimal-Theta-{suffix}"] = float(
-                    "inf"
-                )  # []
-                self.theta_statistics[layer_idx][f"Theta-{suffix}"] = float("inf")  # []
-                self.theta_statistics[layer_idx][f"Condition-{suffix}"] = float(
-                    "inf"
-                )  # []
-
-    def reset_theta_statistics(self):
-        """Reset statistics for optimal_theta."""
-        self.theta_statistics = {}
-
-    def get_current_position(self, activations_shape: Tuple[int, int, int]) -> str:
-        """Determine the statistics level: Prompt, Generation, or All."""
-        _, seq_len, _ = activations_shape
-        return "Prompt" if seq_len > 1 else "Generation"
-
-    def update_theta_statistics(
-        self,
-        optimal_theta: torch.Tensor,
-        theta: torch.Tensor,
-        condition: torch.Tensor,
-        layer_idx: int,
-        activations_shape: Tuple[int, int, int],
-    ):
-        if not self.enable_theta_tracking:
-            return
-
-        levels = ["Prompt", "Generation"]
-        self.enable_theta_statistics(layer_idx, suffixes=levels)
-        suffix = self.get_current_position(activations_shape)
-
-        stats = self.theta_statistics[layer_idx]
-
-        stats[f"Count-{suffix}"] += 1
-        stats[f"Nonzero-Count-{suffix}"] += 1  # TODO. Fix this!
-        stats[f"Norms-{suffix}"].append(torch.norm(optimal_theta).item())
-        stats[f"Min-{suffix}"] = min(
-            stats[f"Min-{suffix}"], torch.min(optimal_theta).item()
-        )
-        stats[f"Max-{suffix}"] = max(
-            stats[f"Max-{suffix}"], torch.max(optimal_theta).item()
-        )
-        stats[f"Optimal-Theta-{suffix}"] = (
-            optimal_theta.mean().item()
-        )  # .append(optimal_theta.cpu().detach().numpy().flatten().tolist())
-        stats[f"Theta-{suffix}"] = (
-            theta.mean().item()
-        )  # .append(theta.cpu().detach().numpy().flatten().tolist())
-        stats[f"Condition-{suffix}"] = (
-            condition.float().mean().item()
-        )  # .append(condition.cpu().detach().numpy().flatten().tolist())
-
-    def add_analysis(self) -> None:
-
-        if not self.enable_theta_tracking:
-            return
-
-        levels = ["Prompt", "Generation"]
-        theta_table = wandb.Table(
-            columns=[
-                "Alpha",
-                "Layer Idx",
-                "Mode",
-                "Derive with Sigmoid",
-                "Derive with Logit",
-                "Derive with All",
-                "Count",
-                "Nonzero-Count",
-                "Norm Mean",
-                "Norm Std",
-                "Min",
-                "Max",
-                "Optimal-Theta-Mean",
-                "Optimal-Theta-Std",
-                "Theta-Mean",
-                "Theta-Std",
-                "Condition-Mean",
-                "Condition-Std",
-            ]
-        )
-
-        for layer_idx, stats in self.theta_statistics.items():
-            for suffix in levels:
-                theta_table.add_data(
-                    self.alpha_value,
-                    layer_idx,
-                    suffix,
-                    self.derive_with_sigmoid,
-                    self.derive_with_logit,
-                    self.derive_with_all,
-                    stats[f"Count-{suffix}"],
-                    stats[f"Nonzero-Count-{suffix}"],
-                    np.mean(stats[f"Norms-{suffix}"]),
-                    np.std(stats[f"Norms-{suffix}"]),
-                    stats[f"Min-{suffix}"],
-                    stats[f"Max-{suffix}"],
-                    np.mean(stats[f"Optimal-Theta-{suffix}"]),
-                    np.std(stats[f"Optimal-Theta-{suffix}"]),
-                    np.mean(stats[f"Theta-{suffix}"]),
-                    np.std(stats[f"Theta-{suffix}"]),
-                    np.mean(stats[f"Condition-{suffix}"]),
-                    np.std(stats[f"Condition-{suffix}"]),
-                )
-
-        if self.log_with_wandb:
-            wandb.log(
-                {f"theta_statistics_table/{self.logging_theta_table_key}": theta_table}
-            )
-        print(
-            f"[INFO] Logged theta statistics with table name: {self.logging_theta_table_key}"
-        )
-        self.reset_theta_statistics()

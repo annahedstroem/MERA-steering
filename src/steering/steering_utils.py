@@ -11,166 +11,117 @@ from cache.cache_utils import *
 from .base import *
 
 DELTA_COLS = [
-    "inner_evaluation/Delta Accuracy",
+    "inner_evaluation/Delta Accuracy Last",
     "inner_evaluation/Delta Accuracy Exact",
-    "inner_evaluation/Delta F1 Score",
+    "inner_evaluation/Delta F1 Score Last",
     "inner_evaluation/Delta F1 Score Exact",
-    "inner_evaluation/Delta Recall",
+    "inner_evaluation/Delta Recall Last",
     "inner_evaluation/Delta Recall Exact",
-    "inner_evaluation/Delta Precision",
+    "inner_evaluation/Delta Precision Last",
     "inner_evaluation/Delta Precision Exact",
-    "inner_evaluation/Delta Error",
+    "inner_evaluation/Delta Error Last",
     "inner_evaluation/Delta Error Exact",
-    "inner_evaluation/Corrections Total",
-    "inner_evaluation/Corrections Percentage",
+    "inner_evaluation/Corrections Total Last",
+    "inner_evaluation/Corrections Percentage Last",
     "inner_evaluation/Corrections Total Exact",
     "inner_evaluation/Corrections Percentage Exact",
 ]
 
 
+def compute_spi(unsteered_acc: float, delta_acc: float):
+    if delta_acc > 0:
+        return delta_acc / (1 - unsteered_acc)
+    elif delta_acc < 0:
+        return delta_acc / (unsteered_acc + 1e-10)
+    elif delta_acc == 0:
+        return 0
+
+
 def compute_error_metrics(targets, prefix="inner_evaluation/"):
     """Compute error-related metrics."""
     metrics = {}
-    for suffix, suffix_load in {"": "", " Exact": "_exact"}.items():
+    for suffix, suffix_load in {" Last": "", " Exact": "_exact"}.items():
+        acc_values = targets[f"y_correct{suffix_load}"]
         error_values = 1 - np.array(targets[f"y_softmax{suffix_load}"])
-        metrics.update({
-            f"{prefix}Error{suffix}": np.mean(error_values),
-            f"{prefix}Accuracy{suffix}": np.mean(targets[f"y_correct{suffix_load}"]),
-            f"{prefix}Error{suffix} Std": np.std(error_values),
-            f"{prefix}Accuracy{suffix} Std": np.std(targets[f"y_correct{suffix_load}"]),
-            f"{prefix}Error{suffix} Min": np.min(error_values),
-            f"{prefix}Error{suffix} Max": np.max(error_values),
-            f"{prefix}Error{suffix} Median": np.percentile(error_values, 50),
-            f"{prefix}Error{suffix} 25th Percentile": np.percentile(error_values, 25),
-            f"{prefix}Error{suffix} 75th Percentile": np.percentile(error_values, 75),
-            f"{prefix}Error{suffix} 90th Percentile": np.percentile(error_values, 90),
-            f"{prefix}Error{suffix} 95th Percentile": np.percentile(error_values, 95),
-        })
+        metrics.update(
+            {
+                f"{prefix}Error{suffix}": np.mean(error_values),
+                f"{prefix}Accuracy{suffix}": np.mean(acc_values),
+                f"{prefix}Error{suffix} Std": np.std(error_values),
+                f"{prefix}Accuracy{suffix} Std": np.std(acc_values),
+                f"{prefix}Error{suffix} Min": np.min(error_values),
+                f"{prefix}Error{suffix} Max": np.max(error_values),
+                f"{prefix}Error{suffix} Median": np.percentile(error_values, 50),
+                f"{prefix}Error{suffix} 25th Percentile": np.percentile(
+                    error_values, 25
+                ),
+                f"{prefix}Error{suffix} 75th Percentile": np.percentile(
+                    error_values, 75
+                ),
+                f"{prefix}Error{suffix} 90th Percentile": np.percentile(
+                    error_values, 90
+                ),
+                f"{prefix}Error{suffix} 95th Percentile": np.percentile(
+                    error_values, 95
+                ),
+                f"{prefix}Correct Predictions{suffix}": acc_values,
+            }
+        )
     return metrics
+
 
 def compute_classification_metrics(labels, targets, prefix="inner_evaluation/"):
     """Compute classification metrics like F1-score, Recall, and Precision."""
     metrics = {}
-    for suffix, suffix_load in {"": "", " Exact": "_exact"}.items():
-        metrics.update({
-            f"{prefix}F1 Score{suffix}": f1_score(labels, targets[f"y_pred{suffix_load}"], average="weighted"),
-            f"{prefix}Recall{suffix}": recall_score(labels, targets[f"y_pred{suffix_load}"], average="weighted"),
-            f"{prefix}Precision{suffix}": precision_score(labels, targets[f"y_pred{suffix_load}"], average="weighted"),
-        })
-    return metrics
-
-def compute_transitions(predictions):
-    """Compute positive and negative transitions."""
-    transitions = np.diff(predictions)
-    return transitions == 1, transitions == -1
-
-def compute_transition_metrics(targets, prefix="inner_evaluation/"):
-    """Compute transition metrics for error analysis."""
-    metrics = {}
-    for suffix, suffix_load in {"": "", " Exact": "_exact"}.items():
-        pos_transitions, neg_transitions = compute_transitions(targets[f"y_correct{suffix_load}"])
-        metrics.update({
-            f"{prefix}Correct Transitions{suffix}": np.mean(pos_transitions),
-            f"{prefix}Incorrect Transitions{suffix}": np.mean(neg_transitions),
-        })
+    for suffix, suffix_load in {" Last": "", " Exact": "_exact"}.items():
+        metrics.update(
+            {
+                f"{prefix}F1 Score{suffix}": f1_score(
+                    labels, targets[f"y_pred{suffix_load}"], average="weighted"
+                ),
+                f"{prefix}Recall{suffix}": recall_score(
+                    labels, targets[f"y_pred{suffix_load}"], average="weighted"
+                ),
+                f"{prefix}Precision{suffix}": precision_score(
+                    labels, targets[f"y_pred{suffix_load}"], average="weighted"
+                ),
+            }
+        )
     return metrics
 
 
-def get_best_alpha_from_searches(
-    model_name: str,
-    task_name: str,
-    threshold: float = 0.05,
-    method_name: str = "optimal_probe_1.0_all_layers_all_token_pos_derive_all_with_logit_only",
-    alpha_path: str = "../runs/steering/df_alpha_search_results_final.csv",
-):
-
-    # df_alpha_per_combination = df_alpha.loc[df_alpha.groupby("run_name")["Metric"].idxmax(), ["run_name", "Alpha", "Type", "Reference Last", "Metric"]]
-    df_alpha = pd.read_csv(alpha_path)
-    df_alpha = df_alpha.loc[(df_alpha["method"].str.contains(method_name))]
-
-    df_alpha_per_combination = df_alpha.loc[
-        df_alpha[df_alpha["Type"] == "Base"].groupby("run_name")["Metric"].idxmax(),
-        ["run_name", "Alpha", "Type", "Reference Last", "Metric", "model_name"],
-    ]
-    df_alpha_per_combination["Delta"] = (
-        df_alpha_per_combination["Metric"] - df_alpha_per_combination["Reference Last"]
-    )
-    df_alpha_per_combination["Intervene"] = df_alpha_per_combination.apply(
-        lambda row: row["Delta"]
-        > np.sqrt(
-            np.log(2 / threshold) / (2 * (210 if "mmlu" in row["run_name"] else 250))
-        ),
-        axis=1,
-    )
-
-    df_alpha_per_combination_exact = df_alpha.loc[
-        df_alpha.groupby("run_name")["Metric Exact"].idxmax(),
-        ["run_name", "Alpha", "Type", "Reference Exact", "Metric Exact"],
-    ]
-    df_alpha_per_combination_exact.rename(
-        {"Alpha": "Alpha Exact", "Type": "Type Exact"}, inplace=True
-    )
-    df_alpha_per_combination_exact["Delta"] = (
-        df_alpha_per_combination_exact["Metric Exact"]
-        - df_alpha_per_combination_exact["Reference Exact"]
-    )
-    df_alpha_per_combination_exact["Intervene"] = df_alpha_per_combination_exact.apply(
-        lambda row: row["Delta"]
-        > np.sqrt(
-            np.log(2 / threshold) / (2 * (210 if "mmlu" in row["run_name"] else 250))
-        ),
-        axis=1,
-    )
-    merged_df = pd.merge(
-        df_alpha_per_combination,
-        df_alpha_per_combination_exact,
-        on="run_name",
-        how="outer",
-        suffixes=("_last", "_exact"),
-    )
-
-    best_alpha_last_df = merged_df.loc[
-        (merged_df["model_name"] == model_name)
-        & (merged_df["run_name"].str.contains(task_name))
-        & (merged_df["Intervene_last"] == True),
-        ["Alpha_last", "Metric"],
-    ]
-
-    best_alpha_last = (
-        best_alpha_last_df.loc[:, "Alpha_last"].values[0]
-        if not best_alpha_last_df.empty
-        else 1.0
-    )
-    best_metric_last = (
-        best_alpha_last_df.loc[:, "Metric"].values[0]
-        if not best_alpha_last_df.empty
-        else 1.0
-    )
-
-    best_alpha_exact_df = merged_df.loc[
-        (merged_df["model_name"] == model_name)
-        & (merged_df["run_name"].str.contains(task_name))
-        & (merged_df["Intervene_exact"] == True),
-        ["Alpha_exact", "Metric Exact"],
-    ]
-    best_alpha_exact = (
-        best_alpha_exact_df.loc[:, "Alpha_exact"].values[0]
-        if not best_alpha_exact_df.empty
-        else None
-    )
-    best_metric_exact = (
-        best_alpha_exact_df.loc[:, "Metric Exact"].values[0]
-        if not best_alpha_exact_df.empty
-        else None
-    )
-
+def compute_transitions(
+    baseline: np.ndarray, steered: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Compute all transitions from baseline to steered: 0→1, 1→0, 0→0, 1→1."""
     return (
-        best_alpha_last,
-        best_alpha_exact,
-        best_metric_last,
-        best_metric_exact,
-        merged_df,
+        (baseline == 0) & (steered == 1),  # Recovery!
+        (baseline == 1) & (steered == 0),  # Regression!
+        (baseline == 0) & (steered == 0),  # Persistent Error!
+        (baseline == 1) & (steered == 1),  # Stability!
     )
+
+
+def compute_transition_metrics(
+    baseline_correct: Dict[str, np.ndarray],
+    steered_correct: Dict[str, np.ndarray],
+    prefix: str = "inner_evaluation/",
+    suffix: str = "",
+) -> Dict[str, float]:
+    """Compute transition metrics from baseline to steered."""
+    metrics = {}
+    t_0to1, t_1to0, t_0to0, t_1to1 = compute_transitions(
+        baseline_correct, steered_correct
+    )
+    metrics.update(
+        {
+            f"{prefix}Transitions (0->1){suffix}": np.mean(t_0to1),
+            f"{prefix}Transitions (1->0){suffix}": np.mean(t_1to0),
+            f"{prefix}Transitions (0->0){suffix}": np.mean(t_0to0),
+            f"{prefix}Transitions (1->1){suffix}": np.mean(t_1to1),
+        }
+    )
+    return metrics
 
 
 def append_metrics(
@@ -182,36 +133,36 @@ def append_metrics(
 ) -> Dict[str, Any]:
 
     deltas = {
-        f"{prefix}Delta Accuracy": evaluation_metrics[f"{prefix}Accuracy"]
-        - baseline[f"{prefix}Accuracy"],
+        f"{prefix}Delta Accuracy Last": evaluation_metrics[f"{prefix}Accuracy Last"]
+        - baseline[f"{prefix}Accuracy Last"],
         f"{prefix}Delta Accuracy Exact": evaluation_metrics[f"{prefix}Accuracy Exact"]
         - baseline[f"{prefix}Accuracy Exact"],
-        f"{prefix}Delta F1 Score": evaluation_metrics[f"{prefix}F1 Score"]
-        - baseline[f"{prefix}F1 Score"],
+        f"{prefix}Delta F1 Score Last": evaluation_metrics[f"{prefix}F1 Score Last"]
+        - baseline[f"{prefix}F1 Score Last"],
         f"{prefix}Delta F1 Score Exact": evaluation_metrics[f"{prefix}F1 Score Exact"]
         - baseline[f"{prefix}F1 Score Exact"],
-        f"{prefix}Delta Recall": evaluation_metrics[f"{prefix}Recall"]
-        - baseline[f"{prefix}Recall"],
+        f"{prefix}Delta Recall Last": evaluation_metrics[f"{prefix}Recall Last"]
+        - baseline[f"{prefix}Recall Last"],
         f"{prefix}Delta Recall Exact": evaluation_metrics[f"{prefix}Recall Exact"]
         - baseline[f"{prefix}Recall Exact"],
-        f"{prefix}Delta Precision": evaluation_metrics[f"{prefix}Precision"]
-        - baseline[f"{prefix}Precision"],
+        f"{prefix}Delta Precision Last": evaluation_metrics[f"{prefix}Precision Last"]
+        - baseline[f"{prefix}Precision Last"],
         f"{prefix}Delta Precision Exact": evaluation_metrics[f"{prefix}Precision Exact"]
         - baseline[f"{prefix}Precision Exact"],
-        f"{prefix}Delta Error": baseline[f"{prefix}Error"]
-        - evaluation_metrics[f"{prefix}Error"],
+        f"{prefix}Delta Error Last": baseline[f"{prefix}Error Last"]
+        - evaluation_metrics[f"{prefix}Error Last"],
         f"{prefix}Delta Error Exact": baseline[f"{prefix}Error Exact"]
         - evaluation_metrics[f"{prefix}Error Exact"],
-        f"{prefix}Corrections Total": np.sum(
-            evaluation_metrics[f"{prefix}Correct Predictions"]
+        f"{prefix}Corrections Total Last": np.sum(
+            evaluation_metrics[f"{prefix}Correct Predictions Last"]
         )
-        - np.sum(baseline[f"{prefix}Correct Predictions"]),
-        f"{prefix}Corrections Percentage": (
+        - np.sum(baseline[f"{prefix}Correct Predictions Last"]),
+        f"{prefix}Corrections Percentage Last": (
             (
-                np.sum(evaluation_metrics[f"{prefix}Correct Predictions"])
-                / np.sum(baseline[f"{prefix}Correct Predictions"])
+                np.sum(evaluation_metrics[f"{prefix}Correct Predictions Last"])
+                / np.sum(baseline[f"{prefix}Correct Predictions Last"])
             )
-            if np.sum(baseline[f"{prefix}Correct Predictions"]) != 0
+            if np.sum(baseline[f"{prefix}Correct Predictions Last"]) != 0
             else 0.0
         ),
         f"{prefix}Corrections Total Exact": np.sum(
@@ -223,12 +174,31 @@ def append_metrics(
                 np.sum(evaluation_metrics[f"{prefix}Correct Predictions Exact"])
                 / np.sum(baseline[f"{prefix}Correct Predictions Exact"])
             )
-            if np.sum(baseline[f"{prefix}Correct Predictions"]) != 0
+            if np.sum(baseline[f"{prefix}Correct Predictions Exact"]) != 0
             else 0.0
         ),
     }
+    deltas[f"{prefix}SPI Last"] = compute_spi(
+        unsteered_acc=baseline[f"{prefix}Accuracy Last"],
+        delta_acc=deltas[f"{prefix}Delta Accuracy Last"],
+    )
+    deltas[f"{prefix}SPI Exact"] = compute_spi(
+        unsteered_acc=baseline[f"{prefix}Accuracy Exact"],
+        delta_acc=deltas[f"{prefix}Delta Accuracy Exact"],
+    )
 
-    evaluation_metrics.update(deltas)
+    transitions = compute_transition_metrics(
+        baseline[f"{prefix}Correct Predictions Last"],
+        evaluation_metrics[f"{prefix}Correct Predictions Last"],
+        suffix=" Last",
+    )
+    transitions_exact = compute_transition_metrics(
+        baseline[f"{prefix}Correct Predictions Exact"],
+        evaluation_metrics[f"{prefix}Correct Predictions Exact"],
+        suffix=" Exact",
+    )
+    update_metrics = {**deltas, **transitions, **transitions_exact}
+    evaluation_metrics.update(update_metrics)
 
     final_pprint = f"\n\n[FINAL RESULTS] {steering_key}"
     final_pprint += (
@@ -238,10 +208,10 @@ def append_metrics(
     )
     print(final_pprint)
     print(
-        f"[FINAL RESULTS] Delta Accuracy Last (↑): {deltas[f'{prefix}Delta Accuracy']:.3f} | Delta Error Last (↑): {deltas[f'{prefix}Delta Error']:.3f} Corrections Last Total (↑): {deltas[f'{prefix}Corrections Total']:.3f}"
+        f"[FINAL RESULTS] Last — SPI (↑): {update_metrics[f'{prefix}SPI Last']} | Delta Accuracy (↑): {deltas[f'{prefix}Delta Accuracy Last']:.3f} | Delta Error (↑): {deltas[f'{prefix}Delta Error Last']:.3f} Corrections Total (↑): {deltas[f'{prefix}Corrections Total Last']:.3f}"
     )
     print(
-        f"[FINAL RESULTS] Delta Accuracy Exact (↑): {deltas[f'{prefix}Delta Accuracy Exact']:.3f} | Delta Error Exact (↑): {deltas[f'{prefix}Delta Error Exact']:.3f} Corrections Total Exact (↑): {deltas[f'{prefix}Corrections Total Exact']:.3f}\n"
+        f"[FINAL RESULTS] Exact — SPI (↑): {update_metrics[f'{prefix}SPI Exact']} | Delta Accuracy (↑): {deltas[f'{prefix}Delta Accuracy Exact']:.3f} | Delta Error (↑): {deltas[f'{prefix}Delta Error Exact']:.3f} Corrections Total (↑): {deltas[f'{prefix}Corrections Total Exact']:.3f}\n"
     )
 
     return evaluation_metrics

@@ -271,7 +271,7 @@ def collect_activations(
 
     global activations_cache
 
-    activations_cache = {i: [] for i in range(len(model.model.layers))}  # FIXME.
+    activations_cache = {i: [] for i in range(len(model.model.layers))}
 
     if not overwrite:
         nr_keys = 0
@@ -395,7 +395,7 @@ def generate_completions(
                 do_sample=False,
                 use_cache=use_cache,
                 pad_token_id=tokenizer.eos_token_id,
-                #**model_generation_kwargs, # 
+                # **model_generation_kwargs, #
             )
             completions.append(output.sequences.cpu().numpy())
             completions_str.extend(
@@ -442,7 +442,7 @@ def generate_completions(
         "attention_masks": attention_masks,
         "match_tokens": match_tokens,
         "match_indices": match_indices,
-        "match_flags": match_flag,
+        "match_flags": match_flags,
         "max_length": max_length,
         "max_new_tokens": max_new_tokens,
         "prompt_sequence_lengths": prompt_sequence_lengths,

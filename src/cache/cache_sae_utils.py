@@ -1,5 +1,6 @@
+import pickle
+from .utils import clea_gpus
 from sae_lens import HookedSAETransformer, SAE
-
 
 
 def collect_saes(

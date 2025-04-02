@@ -1,4 +1,3 @@
-
 import argparse
 import pickle
 from datetime import datetime
@@ -10,32 +9,49 @@ from steering.constants import *
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description="Postprocess cache to use for probe training.")
+    parser = argparse.ArgumentParser(
+        description="Postprocess cache to use for probe training."
+    )
     parser.add_argument("--nr_layers", type=int, default=26, help="Number of layers.")
     parser.add_argument(
         "--save_cache_key", type=str, default="3000_", help="Save key for the cache."
     )
     parser.add_argument(
-        "--save_dir", type=str, default="../runs", help="Save directory for the cache."
+        "--save_dir",
+        type=str,
+        default="../runs",
+        help="Save directory to retrieve the cache.",
     )
     parser.add_argument(
         "--task_names",
         nargs="+",
         default=[
             "sentiment_analysis",
-            "mmlu_high_school",
-            "sms_spam",
-            "yes_no_question",
+            # "mmlu_high_school",
+            # "sms_spam",
+            # "yes_no_question",
         ],
         help="Task names.",
     )
     parser.add_argument(
-    "--model_names",
-    nargs="+",
-    default=[],
+        "--model_names",
+        nargs="+",
+        default=[
+            "google/gemma-2-2b-it",
+            "google/gemma-2-2b",
+            "meta-llama/Llama-3.2-1B-Instruct",
+            "meta-llama/Llama-3.2-1B",
+            "Qwen/Qwen2.5-3B-Instruct",
+            "Qwen/Qwen2.5-3B",
+        ],
         help="Models to include (e.g., Qwen/Qwen2.5-3B-Instruct).",
     )
-    parser.add_argument("--process_saes", type=str, default="False", help="Enable or disable SAEs processing.")
+    parser.add_argument(
+        "--process_saes",
+        type=str,
+        default="False",
+        help="Enable or disable SAEs processing.",
+    )
 
     args = parser.parse_args()
     print(f"Arguments: {args}")
@@ -49,12 +65,13 @@ if __name__ == "__main__":
     )
     model_names = filter_valid(SUPPORTED_MODELS, args.model_names)
 
-
     results = {}
 
     for model_name in model_names:
-        
+        print(f"Processing {model_name}...")
+
         for task_name in task_names:
+            print(f"Processing {task_name}...")
 
             if process_saes:
                 sae_enc_layers_data = {}
@@ -68,15 +85,31 @@ if __name__ == "__main__":
 
             file_path_cache = f"{save_dir}/{task_name}/{model_name.split('/')[1]}/"
 
-            for layer in tqdm(range(nr_layers), desc=f"Processing Layers for {task_name}"):
+            if "gemma" in model_name:
+                nr_layers = 26
+            elif "Qwen" in model_name:
+                nr_layers = 36
+            elif "Llama" in model_name:
+                nr_layers = 16
+            print(f"[DEBUG] 'nr_layers' set to {nr_layers}.")
+
+            for layer in tqdm(
+                range(nr_layers), desc=f"Processing Layers for {task_name}"
+            ):
 
                 if layer == 0:
 
-                    with open(f"{file_path_cache}{save_cache_key}completions.pkl", "rb") as f:
-                        completions = torch.load(f, map_location="cuda:0")# pickle.load(f)
+                    with open(
+                        f"{file_path_cache}{save_cache_key}completions.pkl", "rb"
+                    ) as f:
+                        completions = pickle.load(
+                            f
+                        )  # torch.load(f, map_location="cuda:0")
 
-                    with open(f"{file_path_cache}{save_cache_key}targets.pkl", "rb") as f:
-                        targets = torch.load(f, map_location="cuda:0")# pickle.load(f)
+                    with open(
+                        f"{file_path_cache}{save_cache_key}targets.pkl", "rb"
+                    ) as f:
+                        targets = pickle.load(f)  # torch.load(f, map_location="cuda:0")
 
                     last_matches = completions["prompt_sequence_lengths"]
                     exact_matches = completions["match_indices"]
@@ -94,12 +127,16 @@ if __name__ == "__main__":
                         f"{file_path_cache}saes/{save_cache_key.replace('parse', '')}sae_{layer}.pkl",
                         "rb",
                     ) as f:
-                        sae_layer = torch.load(f, map_location="cuda:0")# pickle.load(f)
+                        sae_layer = pickle.load(
+                            f
+                        )  # sae_layer = torch.load(f, map_location="cuda:0")#
                 with open(
                     f"{file_path_cache}activations/{save_cache_key.replace('parse', '')}activations_{layer}.pkl",
                     "rb",
                 ) as f:
-                    act_layer = torch.load(f, map_location="cuda:0") # pickle.load(f)
+                    act_layer = pickle.load(
+                        f
+                    )  # act_layer = torch.load(f, map_location="cuda:0") #
 
                 # Get last.
                 act_layer_data[layer] = np.vstack(
@@ -171,9 +208,8 @@ if __name__ == "__main__":
             results[task_name]["y_error_sm_exact"] = y_error_sm_exact
             results[task_name]["y_error_ce_exact"] = y_error_ce_exact
 
-            save_dir = f"{save_dir}/{task_name}/"
             k = "_with_saes" if process_saes else ""
-            file_path_save = f"{save_dir}{model_name}_post_processed_data{k}.pkl"
+            file_path_save = f"{save_dir}/{task_name}/{model_name.split('/')[1]}/{save_cache_key}acts{k}.pkl"
 
             with open(file_path_save, "wb") as f:
                 pickle.dump(results[task_name], f)

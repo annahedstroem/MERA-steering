@@ -19,12 +19,13 @@ from cache.cache_utils import load_saved_data
 from steering.constants import *
 from utils import *
 
+
 def train_probes(
     features: dict,
     models: dict,
     targets: dict,
     metrics: dict,
-    task_name: str,
+    dataset_name: str,
     llm_name: str,
     path: str,
     path_probes: str,
@@ -35,10 +36,16 @@ def train_probes(
     max_attempts: int = 3,
     epsilon: float = 1e-10,
     save: bool = True,
-    normalise_error: bool = False,
     transform_error: bool = False,
-    match_type: str = "",
+    normalise_error: bool = False,
+    token_pos: str = "",
 ) -> pd.DataFrame:
+    """Train linear probes on LM activations using classification and regression targets,
+    with support for multiple token positions, feature types (e.g. activations, SAEs),
+    model types (Lasso, Logistic, etc.), and evaluation metrics. Applies transformations
+    (e.g. log-odds) or normalisation to regression targets and evaluates feature sparsity
+    via coefficient selection across layers with repeated initialisations and dummy baselines.
+    """
 
     selected_layers = list(np.arange(nr_layers))
     probing_results = []
@@ -52,14 +59,13 @@ def train_probes(
                 continue
             X = np.array(layer_features)
             for model_task, y_true in targets.items():
-                
+
                 # Transform to log-odds-ratio space (numerical stability step).
                 if transform_error and model_task == "regression":
-                    y_true = np.clip(y_true, 1e-8, 1 - 1e-8)  
-                    y_true = np.log(y_true / (1 - y_true))   
+                    y_true = np.clip(y_true, 1e-8, 1 - 1e-8)
+                    y_true = np.log(y_true / (1 - y_true))
 
-                
-                if normalise_error and model_task == "regression":
+                elif normalise_error and model_task == "regression":
                     y_true /= y_true.max()
 
                 if model_task == "classification":
@@ -131,7 +137,7 @@ def train_probes(
                                 # Append results!
                                 probing_results.append(
                                     {
-                                        "Dataset": task_name,
+                                        "Dataset": dataset_name,
                                         "LLM_model": llm_name,
                                         "Task": model_task,
                                         "Model": model_name,
@@ -144,27 +150,27 @@ def train_probes(
                                         "No-Coefficients": no_coeffs,
                                         "Attempt": attempt,
                                         "Model-Index": m + 1,
+                                        "Token-Pos": token_pos,
                                         "y_pred": y_pred.tolist(),
                                         "y_test": y_test,
-                                        "Match-Type": match_type,
                                         **res,
                                     }
                                 )
 
                         # Save model object!
-                        model_key = f"{task_name}_{model_task}_{model_name}_{feature_name}_{layer_name}_model{m+1}".lower()
+                        model_key = f"{dataset_name}_{model_task}_{model_name}_{feature_name}_{layer_name}_model{m+1}".lower()
                         model_objects[model_key] = model
 
-    df_probing = pd.DataFrame(probing_results)
+    df_probes = pd.DataFrame(probing_results)
     if save:
-        df_probing.to_pickle(path.replace(".pkl", f"_{task_name}.pkl"))
-        with open(path_probes.replace(".pkl", f"_{task_name}.pkl"), "wb") as f:
+        df_probes.to_pickle(path.replace(".pkl", f"_{dataset_name}.pkl"))
+        with open(path_probes.replace(".pkl", f"_{dataset_name}.pkl"), "wb") as f:
             try:
                 pickle.dump(model_objects, f)
             except Exception as e:
                 print(f"Could not fully load file {f} — {e}")
 
-    return df_probing, model_objects
+    return df_probes, model_objects
 
 
 if __name__ == "__main__":
@@ -173,57 +179,76 @@ if __name__ == "__main__":
     parser.add_argument("--nr_layers", type=int, default=26, help="Number of layers.")
     parser.add_argument("--seed", type=int, default=52, help="Experiment seed.")
     parser.add_argument(
-        "--save_name", type=str, default="acts", help="Dataset name."
+        "--save_name", type=str, default="", help="Extra name for saving probe."
     )
     parser.add_argument(
-        "--save_cache_key", type=str, default="3000", help="Dataset name."
+        "--save_cache_key", type=str, default="3000", help="Save key for the cache."
     )
     parser.add_argument(
-        "--save_dir", type=str, default="../runs", help="Save directory for the cache."
+        "--save_dir",
+        type=str,
+        default="../runs",
+        help="Save directory to retrieve the cache.",
     )
     parser.add_argument(
-        "--match_types", nargs="+", default=["", "_exact"], help="List of match_types."
+        "--token_pos", nargs="+", default=["", "_exact"], help="List of token_pos."
     )
     parser.add_argument(
-        "--task_names",
+        "--dataset_names",
         nargs="+",
         default=[
-            "sentiment_analysis",
-            "mmlu_high_school",
+            # "sentiment_analysis",
+            # "mmlu_high_school",
             "sms_spam",
-            "yes_no_question",
+            # "yes_no_question",
         ],
         help="Task names.",
     )
     parser.add_argument(
-        "--model_name",
-        type=str,
-        default="google/gemma-2-2b-it",
-        help="Name of the model to load.",
+        "--model_names",
+        nargs="+",
+        default=[
+            # "google/gemma-2-2b-it",
+            # "google/gemma-2-2b",
+            "meta-llama/Llama-3.2-1B-Instruct",
+            # "meta-llama/Llama-3.2-1B",
+            # "Qwen/Qwen2.5-3B-Instruct",
+            # "Qwen/Qwen2.5-3B",
+        ],
+        help="Models to include (e.g., Qwen/Qwen2.5-3B-Instruct).",
     )
     parser.add_argument(
-        "--error_types", nargs="+", default=["_sm"], help="Error types."
+        "--process_saes",
+        type=str,
+        default="False",
+        help="Enable or disable SAEs processing.",
     )
-    parser.add_argument("--process_saes", type=str, default="False", help="Enable or disable SAEs processing.")
 
     args = parser.parse_args()
     print(f"Arguments: {args}")
 
-    process_saes, nr_layers, error_types, model_name, task_names, save_name, seed, match_types, save_cache_key, save_dir = (
+    (
+        process_saes,
+        nr_layers,
+        dataset_names,
+        save_name,
+        seed,
+        token_pos,
+        save_cache_key,
+        save_dir,
+    ) = (
         args.process_saes.lower() == "true",
         args.nr_layers,
-        args.error_types,
-        args.model_name,
-        args.task_names,
+        args.dataset_names,
         args.save_name,
         args.seed,
-        args.match_types,
+        args.token_pos,
         args.save_cache_key,
         args.save_dir,
     )
 
-    task_names = filter_valid(SUPPORTED_TASKS, args.task_names)
-    model_name = args.model_name
+    dataset_names = filter_valid(SUPPORTED_TASKS, args.dataset_names)
+    model_names = filter_valid(SUPPORTED_MODELS, args.model_names)
 
     metrics = {
         "regression": {
@@ -242,12 +267,12 @@ if __name__ == "__main__":
     def initialise_regression_models(seed: int, alphas) -> dict:
         """Initialise regression models with various hyperparameters."""
         models = {
-            f"Lasso-{alpha}": Lasso(
+            f"L-{alpha}": Lasso(
                 alpha=alpha, fit_intercept=False, max_iter=2000, random_state=seed
             )
             for alpha in alphas
         }  # positive=True,
-        models["Lasso-0"] = LinearRegression(fit_intercept=False, n_jobs=5)
+        models["L-0"] = LinearRegression(fit_intercept=False, n_jobs=5)
         return models
 
     def initalise_classification_models(seed: int) -> dict:
@@ -267,88 +292,99 @@ if __name__ == "__main__":
         "classification": initalise_classification_models(seed),
         "regression": initialise_regression_models(seed, alphas),
     }
-    
-    # How to save the probes.
-    path = f'../../runs/probes/sub/df_new_probing_{model_name}_{save_name}.pkl'
-    path_models = f'../../runs/probes/sub/models_{model_name}_{save_name}.pkl'
+    error_type = "sm"
+    save_name = f"_{save_name}" if save_name != "" else save_name
 
-    df_probings = []
-    model_objects = {}
+    for model_name in model_names:
+        print(f"Processing {model_name}...")
 
-    for task_name in task_names:
+        for dataset_name in dataset_names:
+            print(f"Processing {dataset_name}...")
 
-        for suffix in match_types:
+            list_probes = []
+            model_objects = {}
+
+            # How to save the probes.
+            path_probe = f'{save_dir}/probes/sub/df_probes_{model_name.split("/")[1]}{save_name}.pkl'
+            path_probe_models = f'{save_dir}/probes/sub/models_{model_name.split("/")[1]}{save_name}.pkl'
+            path_df = f"{save_dir}/{dataset_name}/{model_name.split('/')[1]}/df_probes{save_name}.pkl"
 
             # Get the postprocessed data.
             k = "_with_saes" if process_saes else ""
-            file_path = (
-                f"{save_dir}/{task_name}/{model_name.split('/')[1]}_post_processed_data{k}.pkl"
-            )
+            file_path = f"{save_dir}/{dataset_name}/{model_name.split('/')[1]}/{save_cache_key}_acts{k}.pkl"
+
+            # Load activations.
             with open(file_path, "rb") as f:
                 try:
                     acts = pickle.load(f)
                 except Exception as e:
                     print(f"Could not fully load file {f} — {e}")
 
+            # Load targets.
             y_targets = load_saved_data(
-                save_dir=f"{save_dir}/{task_name}/{model_name.split('/')[1]}/",
+                save_dir=f"{save_dir}/{dataset_name}/{model_name.split('/')[1]}/",
                 save_key=save_cache_key,
                 data_type="targets",
             )
 
-            for error_type in error_types:
+            for token_pos in token_pos:
 
-                # Load task-specific data for vanilla steering.
+                # Prepare the features.
+                acts_cache = acts[f"activations_cache{token_pos}"]
+                if process_saes:
+                    sae_enc_cache = acts[f"sae_enc_cache{token_pos}"]
+                features = {
+                    "activations": acts_cache,
+                }
+                if process_saes:
+                    features["encodings"] = sae_enc_cache
+
+                # Load task-specific targets.
                 y_correct = [
                     int(pred == true)
                     for pred, true in zip(
-                        y_targets[f"y_pred{suffix}"], y_targets["y_true"]
+                        y_targets[f"y_pred{token_pos}"], y_targets["y_true"]
                     )
                 ]
                 if error_type == "ce":
-                    y_error = y_targets[f"y_error{suffix}"]
+                    y_error = y_targets[f"y_error{token_pos}"]
                 else:
-                    y_error = 1 - np.array(y_targets[f"y_softmax{suffix}"])
-                activations_cache = acts[f"activations_cache{suffix}"]
-                if process_saes:
-                    sae_enc_cache = acts[f"sae_enc_cache{suffix}"]
+                    y_error = 1 - np.array(y_targets[f"y_softmax{token_pos}"])
 
-                # Prepare the features and targets and train.
-                features = {
-                    "Activations": activations_cache,
-                }
-                if process_saes:
-                    features["Encodings"] = sae_enc_cache
+                # Prepare the targets.
                 targets = {
                     "classification": y_correct,
                     "regression": y_error,
                 }
-                df_probing, model_objects = train_probes(
+
+                # Train probes!
+                df_probes, model_objects = train_probes(
                     features,
                     models,
                     targets,
                     metrics,
                     nr_models=5,
                     llm_name=model_name,
-                    normalise_error=False,
-                    task_name=task_name.replace(".pkl", ""),
+                    dataset_name=dataset_name.replace(".pkl", ""),
                     error_type=error_type.replace("_", ""),
                     nr_layers=nr_layers,
-                    path=path,
-                    path_probes=path_models,
-                    match_type=suffix + "last" if suffix == "" else "exact",
-                    transform_error=True,
+                    path=path_probe,
+                    path_probes=path_probe_models,
+                    token_pos=token_pos + "last" if token_pos == "" else "exact",
+                    normalise_error=False,
+                    transform_error=False,
                 )
-                df_probings.append(df_probing)
+                list_probes.append(df_probes)
                 model_objects.update(model_objects)
 
-    # Save per model, but across tasks.
-    df = pd.concat(df_probings)
+            # Save per model for both exact and last (!)
+            df_probes_full = pd.concat(list_probes)
+            df_probes_full.to_pickle(path_df)
+            df_probes_full.to_pickle(path_probe.replace("sub/", ""))
 
-    # Save a general!
-    df.to_pickle(path.replace("sub/", ""))
-    with open(path_models.replace("sub/", ""), "wb") as f:
-        try:
-            pickle.dump(model_objects, f)
-        except Exception as e:
-            print(f"Could not fully load file {f} — {e}")
+            # Save the trained models.
+            with open(path_probe_models.replace("sub/", ""), "wb") as f:
+                try:
+                    pickle.dump(model_objects, f)
+                except Exception as e:
+                    print(f"Could not fully load file {f} — {e}")

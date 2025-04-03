@@ -6,6 +6,7 @@ import requests
 from huggingface_hub import login
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
+from datasets import concatenate_datasets
 from utils import *
 
 hf_token = "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"
@@ -31,11 +32,11 @@ dataset_info = {
             "neutral": generate_text_variants("neutral"),
             "negative": generate_text_variants("negative"),
         },
-        "DATASET_NAME": "finance-instruct",
+        "DATASET_NAME_HF": "finance-instruct",
         "MAX_LENGTH": 150,
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "answer",
-        "NR_CALIBRATION_SAMPLES": 3000,
+        "NR_TRAINING_SAMPLES": 3000,
         "NR_REF_SAMPLES": 250,
         "NR_TEST_SAMPLES": 250,
     },
@@ -47,11 +48,11 @@ dataset_info = {
             "Yes": generate_text_variants("Yes"),
             "No": generate_text_variants("No"),
         },
-        "DATASET_NAME": "finance-instruct",
+        "DATASET_NAME_HF": "finance-instruct",
         "MAX_LENGTH": 350,
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "answer",
-        "NR_CALIBRATION_SAMPLES": 3000,
+        "NR_TRAINING_SAMPLES": 3000,
         "NR_REF_SAMPLES": 250,
         "NR_TEST_SAMPLES": 250,
     },
@@ -63,11 +64,11 @@ dataset_info = {
             "ham": generate_text_variants("ham"),
             "spam": generate_text_variants("spam"),
         },
-        "DATASET_NAME": "sms_spam",
+        "DATASET_NAME_HF": "sms_spam",
         "MAX_LENGTH": 350,
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "label",
-        "NR_CALIBRATION_SAMPLES": 3000,
+        "NR_TRAINING_SAMPLES": 3000,
         "NR_REF_SAMPLES": 250,
         "NR_TEST_SAMPLES": 250,
     },
@@ -79,11 +80,11 @@ dataset_info = {
             "positive": generate_text_variants("positive"),
             "negative": generate_text_variants("negative"),
         },
-        "DATASET_NAME": "imdb",
+        "DATASET_NAME_HF": "imdb",
         "MAX_LENGTH": 350,
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "label",
-        "NR_CALIBRATION_SAMPLES": 3000,
+        "NR_TRAINING_SAMPLES": 3000,
         "NR_REF_SAMPLES": 250,
         "NR_TEST_SAMPLES": 250,
     },
@@ -96,11 +97,11 @@ dataset_info = {
             for i in range(65, 91)
         },
         "SUB_TASKS": ["computer science", "physics", "math", "engineering"],
-        "DATASET_NAME": "mmlu-pro",
+        "DATASET_NAME_HF": "mmlu-pro",
         "MAX_LENGTH": 150,
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "answer",
-        "NR_CALIBRATION_SAMPLES": 3000,
+        "NR_TRAINING_SAMPLES": 3000,
         "NR_REF_SAMPLES": 250,
         "NR_TEST_SAMPLES": 250,
     },
@@ -129,11 +130,11 @@ dataset_info = {
             "high_school_us_history",
             "high_school_world_history",
         ],
-        "DATASET_NAME": "mmlu",
+        "DATASET_NAME_HF": "mmlu",
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "answer",
-        "NR_CALIBRATION_SAMPLES": 3000,
+        "NR_TRAINING_SAMPLES": 3000,
         "NR_REF_SAMPLES": 210,
         "NR_TEST_SAMPLES": 210,
     },
@@ -145,12 +146,17 @@ dataset_info = {
             chr(i): generate_text_variants(chr(i), remove_lower=True)
             for i in range(65, 69)
         },
-        "DATASET_NAME": "mmlu",
+        "DATASET_NAME_HF": "mmlu",
         "MAX_LENGTH": 250,
         "MAX_NEW_TOKENS": 100,
         "LABEL_NAME": "answer",
-        "SUB_TASKS": [],  # dynamically selected
-        "NR_CALIBRATION_SAMPLES": 2602,
+        "SUB_TASKS": [
+            "professional_accounting",
+            "professional_law",
+            "professional_medicine",
+            "professional_psychology",
+        ],
+        "NR_TRAINING_SAMPLES": 2601,
         "NR_REF_SAMPLES": 210,
         "NR_TEST_SAMPLES": 210,
     },
@@ -179,13 +185,14 @@ class TaskConfig:
         print(f"[INFO] Initalising {self.dataset_name}")
         self.dataset_info = dataset_info[self.dataset_name]
         if self.nr_samples is None:
-            self.nr_samples = self.dataset_info["NR_CALIBRATION_SAMPLES"]
+            self.nr_samples = self.dataset_info["NR_TRAINING_SAMPLES"]
         if self.nr_test_samples is None:
-            self.nr_test_samples = self.dataset_info["NR_REF_SAMPLES"]
+            self.nr_test_samples = self.dataset_info["NR_TEST_SAMPLES"]
         if self.nr_ref_samples is None:
-            self.nr_ref_samples = self.dataset_info["NR_TEST_SAMPLES"]
+            self.nr_ref_samples = self.dataset_info["NR_REF_SAMPLES"]
 
-        self.dataset_name = self.dataset_info["DATASET_NAME"]
+        self.dataset_name = self.dataset_name
+        self.dataset_name_hf = self.dataset_info["DATASET_NAME_HF"]
         self.model_kwargs = self.model_kwargs or {
             "token": self.token,
             "cache_dir": self.cache_dir,
@@ -273,32 +280,46 @@ class DatasetHandler:
                 self.ds_samples_ref
             )
             self.prompts_ref = self._get_prompts(self.ds_samples_ref)
+
         print(f"[INFO] ... Done.")
+        print(f"[DEBUG] Loaded HF dataset: {self.config.dataset_name_hf}")
+        print(f"[DEBUG] Task config name: {self.config.dataset_name}")
+        print(f"[DEBUG] Dataset size after filtering: {len(self.prompts)}")
+
 
     def _load_dataset(self):
-        ds = load_from_disk(f"{self.config.cache_dir}{self.config.dataset_name}.hf")
-        if self.config.dataset_name == "finance-instruct":
+        ds = load_from_disk(f"{self.config.cache_dir}{self.config.dataset_name_hf}.hf")
+        if self.config.dataset_name_hf == "finance-instruct":
             ds = ds.filter(lambda x: x["task_type"] == self.config.dataset_name)
-        elif self.config.dataset_name == "mmlu_pro":
+        elif self.config.dataset_name_hf == "mmlu_pro":
             ds = ds.filter(lambda x: x["category"] in self.dataset_info["SUB_TASKS"])
-        elif self.config.dataset_name == "mmlu":
+        elif self.config.dataset_name_hf == "mmlu":
             if self.config.dataset_name == "mmlu_professional":
-                ds = ds.filter(lambda x: x["subject"].startswith("professional_"))
+                if self.config.dataset_name == "mmlu_professional":
+                    # Filter all splits
+                    subsets = []
+                    for split in ["test", "validation", "dev"]:
+                        if split in ds:
+                            filtered = ds[split].filter(lambda x: x["subject"].startswith("professional_"))
+                            subsets.append(filtered)
+                    ds = concatenate_datasets(subsets)
             else:
                 ds = ds.filter(lambda x: x["subject"] in self.dataset_info["SUB_TASKS"])
 
         return ds
 
     def _get_samples(self, end_idx: int, start_idx: int = 0):
-        if self.config.dataset_name in ["finance-instruct", "sms_spam"]:
+        if self.config.dataset_name_hf in ["finance-instruct", "sms_spam"]:
             return self.ds["train"].select(range(start_idx, end_idx))
-        elif self.config.dataset_name in ["mmlu_pro", "imdb"]:  # == "mmlu_pro":
+        elif self.config.dataset_name == "mmlu_professional":
             return self.ds.select(range(start_idx, end_idx))
-        elif self.config.dataset_name in ["mmlu"]:  # , "imdb"]:
+        elif self.config.dataset_name_hf in ["mmlu_pro", "imdb"]:  # == "mmlu_pro":
+            return self.ds.select(range(start_idx, end_idx))
+        elif self.config.dataset_name_hf in ["mmlu"]:  # , "imdb"]:
             return self.ds["test"].select(range(start_idx, end_idx))
 
     def _get_y_true_labels(self, samples):
-        if self.config.dataset_name in ["mmlu", "sms_spam", "imdb"]:
+        if self.config.dataset_name_hf in ["mmlu", "sms_spam", "imdb"]:
             return [
                 self.dataset_info["CLASS_INDEX_TO_LABEL"][
                     s[self.dataset_info["LABEL_NAME"]]
@@ -340,10 +361,9 @@ class DatasetHandler:
         prompts = []
 
         if "mmlu" in self.config.dataset_name:
-            if "pro" in self.config.dataset_name:
+            options = samples["choices"]
+            if "natural_science" in self.config.dataset_name:
                 options = samples["options"]
-            else:
-                options = samples["choices"]
 
             for i, option in enumerate(options):
                 formatted_options = "\n".join(

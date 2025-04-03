@@ -25,6 +25,14 @@ DELTA_COLS = [
     "inner_evaluation/Corrections Percentage Last",
     "inner_evaluation/Corrections Total Exact",
     "inner_evaluation/Corrections Percentage Exact",
+    "inner_evaluation/Transitions (0->1) Last",
+    "inner_evaluation/Transitions (0->1) Exact",
+    "inner_evaluation/Transitions (0->0) Last",
+    "inner_evaluation/Transitions (0->0) Exact",
+    "inner_evaluation/Transitions (1->1) Last",
+    "inner_evaluation/Transitions (1->1) Exact",
+    "inner_evaluation/Transitions (1->0) Last",
+    "inner_evaluation/Transitions (1->0) Exact",
 ]
 
 

@@ -681,7 +681,7 @@ for model_name in model_names:
                     **evaluation_metrics,
                 }
                 # Some processing.
-                excludes = ["Correct", "_ref", "probe_weights", "inner_evaluation"]
+                excludes = [ "_ref", "probe_weights", "inner_evaluation"] # "Correct",
                 single_results = {k: v for k, v in single_results.items() if not any(ex in k for ex in excludes)}
 
                 # Print results.

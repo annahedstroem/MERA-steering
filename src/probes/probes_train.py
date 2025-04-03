@@ -223,12 +223,19 @@ if __name__ == "__main__":
         default="False",
         help="Enable or disable SAEs processing.",
     )
+    parser.add_argument(
+        "--transform_targets",
+        type=str,
+        default="True",
+        help="Enable or disable transformation on targets.",
+    )
 
     args = parser.parse_args()
     print(f"Arguments: {args}")
 
     (
         process_saes,
+        transform_targets,
         nr_layers,
         dataset_names,
         save_name,
@@ -237,7 +244,8 @@ if __name__ == "__main__":
         save_cache_key,
         save_dir,
     ) = (
-        args.process_saes.lower() == "true",
+        args.process_saes,
+        args.transform_targets,
         args.nr_layers,
         args.dataset_names,
         args.save_name,
@@ -249,7 +257,8 @@ if __name__ == "__main__":
 
     dataset_names = filter_valid(SUPPORTED_TASKS, args.dataset_names)
     model_names = filter_valid(SUPPORTED_MODELS, args.model_names)
-
+    print(f"INFO transform_targets = {transform_targets}.")
+    
     metrics = {
         "regression": {
             "RMSE": lambda y_true, y_pred: mean_squared_error(
@@ -372,7 +381,7 @@ if __name__ == "__main__":
                     path_probes=path_probe_models,
                     token_pos=token_pos + "last" if token_pos == "" else "exact",
                     normalise_error=False,
-                    transform_error=False,
+                    transform_error=transform_targets,
                 )
                 list_probes.append(df_probes)
                 model_objects.update(model_objects)

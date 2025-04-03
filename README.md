@@ -109,42 +109,51 @@ cd src
 
 <details> <summary><b>Step 1.</b> Prepare datasets for probe training</summary>
 For each model, to prepare datasets for probe training (see supported datasets and models [here](#supported-models-and-datasets)) run the following script:
-  
+
+<br>
 ```bash
 python -m cache.cache_run --dataset_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --nr_samples 3000 --model_name meta-llama/Llama-3.2-1B-Instruct --hf_token INSERT_KEY
 python -m cache.cache_run --dataset_names mmlu_professional --nr_samples 2601 --model_name meta-llama/Llama-3.2-1B --hf_token INSERT_KEY
 ```
+</br>
 Just rerun with the different models (see supported datasets and models [here](#supported-models-and-datasets)).
 
 Next, post-processes the cache data (i.e., subselect activation values based on token positions ("last" of the prompt and "exact" of the answer)), making the cached files significantly smaller in size in preparation for probe training.
 
+<br>
 ```bash
 python -m cache.cache_postprocess --dataset_names sms_spam
 ```
+</br>
 
 </details>
 
 <details> <summary><b>Step 2.</b> Train linear probes</summary>
 For each model, to train linear probes (error estimators), run the following script:
+
+<br>
 ```bash
 python -m probes.probes_train --dataset_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --model_name meta-llama/Llama-3.2-1B-Instruct --save_name custom --transform
 ```
+</br>
 if you want to change any of the hyperparameters, please edit the script `probes_train.py` directly.
 
 To analyse the performance of the probes, go to the following notebook `nbs/evaluate_probes.py`.
 </details>
 
 <details> <summary><b>Step 3.</b> Benchmark steering methods</summary>
-  For each model, to benchmark steering methods, run the following script:
+For each model, to benchmark steering methods, run the following script:
 
+<br>
 ```bash
-python -m steering.steering_run --steering_methods optimal_probe --dataset_names sms_spam --model_names "meta-llama/Llama-3.2-1B-Instruct" --fname custom_experiment --probe_token_pos exact --wandb_key e3cb93789b67ddad2a5f41e7c1ed3a31c56a544f
+python -m steering.steering_run --steering_methods optimal_probe --dataset_names sms_spam --model_names "meta-llama/Llama-3.2-1B-Instruct" --fname custom_experiment --probe_token_pos exact --wandb_key INSERT_KEY
 ```
+</br>
 
 To analyse the performance of the steering methods, go to the following notebook `nbs/evaluate_steering.py`.
 </details>
 
-python -m steering.steering_run --steering_methods optimal_probe --dataset_names sms_spam --model_names "meta-llama/Llama-3.2-1B-Instruct" --fname custom_experiment --probe_token_pos exact --wandb_key
+
 
 ## Dataset and models
 

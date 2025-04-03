@@ -117,9 +117,11 @@ python -m cache.cache_run --dataset_names mmlu_professional --nr_samples 2601 --
 Just rerun with the different models (see supported datasets and models [here](#supported-models-and-datasets)).
 
 Next, post-processes the cache data (i.e., subselect activation values based on token positions ("last" of the prompt and "exact" of the answer)), making the cached files significantly smaller in size in preparation for probe training.
+
 ```bash
 python -m cache.cache_postprocess --dataset_names sms_spam
 ```
+
 </details>
 
 <details> <summary><b>Step 2.</b> Train linear probes</summary>
@@ -133,10 +135,12 @@ To analyse the performance of the probes, go to the following notebook `nbs/eval
 </details>
 
 <details> <summary><b>Step 3.</b> Benchmark steering methods</summary>
-  For each model, to benchmark steering methods, run the following script
+  For each model, to benchmark steering methods, run the following script:
+
 ```bash
 python -m steering.steering_run --steering_methods optimal_probe --dataset_names sms_spam --model_names "meta-llama/Llama-3.2-1B-Instruct" --fname custom_experiment --probe_token_pos exact --wandb_key e3cb93789b67ddad2a5f41e7c1ed3a31c56a544f
 ```
+
 To analyse the performance of the steering methods, go to the following notebook `nbs/evaluate_steering.py`.
 </details>
 

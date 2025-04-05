@@ -55,11 +55,13 @@ def main(
         os.makedirs(save_dir_curr, exist_ok=True)  # uuid.uuid1().hex[:3]uuid
         save_key = f"{nr_samples}_"
 
+        '''
         for i, p in enumerate(dataset_handler.prompts):
             print(p)
             if i == 5:
                 break
-
+        '''
+        
         # Step 1: Generate completions.
         completions = generate_completions(
             model=model_handler.model,
@@ -185,7 +187,13 @@ if __name__ == "__main__":
         "--dataset_names",
         type=str,
         nargs="+",
-        default=["mmlu_high_school"],
+        default=[
+            "sentiment_analysis",
+            "mmlu_high_school",
+            # "mmlu_professional",
+            # "sms_spam",
+            "yes_no_question",
+        ],
         help="Name(s) of the task(s) to load. Provide a single name or a space-separated list.",
     )
     parser.add_argument(
@@ -203,7 +211,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--overwrite",
-        default=False,
+        default=True, # FIXME
         action=argparse.BooleanOptionalAction,
         help="If overwrite existing results.",
     )

@@ -176,7 +176,7 @@ def train_probes(
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train probes to use for steering.")
-    parser.add_argument("--nr_layers", type=int, default=26, help="Number of layers.")
+    parser.add_argument("--nr_layers", type=int, default=36, help="Number of layers.")
     parser.add_argument("--seed", type=int, default=52, help="Experiment seed.")
     parser.add_argument(
         "--save_name", type=str, default="", help="Extra name for saving probe."
@@ -199,7 +199,8 @@ if __name__ == "__main__":
         default=[
             # "sentiment_analysis",
             # "mmlu_high_school",
-            "sms_spam",
+            "mmlu_professional",
+            # "sms_spam",
             # "yes_no_question",
         ],
         help="Task names.",
@@ -208,12 +209,13 @@ if __name__ == "__main__":
         "--model_names",
         nargs="+",
         default=[
-            # "google/gemma-2-2b-it",
-            # "google/gemma-2-2b",
+            "google/gemma-2-2b-it",
             "meta-llama/Llama-3.2-1B-Instruct",
-            # "meta-llama/Llama-3.2-1B",
-            # "Qwen/Qwen2.5-3B-Instruct",
-            # "Qwen/Qwen2.5-3B",
+            "meta-llama/Llama-3.2-1B",
+            "Qwen/Qwen2.5-3B",
+            "Qwen/Qwen2.5-3B-Instruct",
+            "google/gemma-2-2b", 
+            
         ],
         help="Models to include (e.g., Qwen/Qwen2.5-3B-Instruct).",
     )
@@ -240,12 +242,12 @@ if __name__ == "__main__":
         dataset_names,
         save_name,
         seed,
-        token_pos,
+        token_pos_all,
         save_cache_key,
         save_dir,
     ) = (
-        args.process_saes,
-        args.transform_targets,
+        args.process_saes.lower() == "true",
+        args.transform_targets.lower() == "true",
         args.nr_layers,
         args.dataset_names,
         args.save_name,
@@ -257,8 +259,9 @@ if __name__ == "__main__":
 
     dataset_names = filter_valid(SUPPORTED_TASKS, args.dataset_names)
     model_names = filter_valid(SUPPORTED_MODELS, args.model_names)
-    print(f"INFO transform_targets = {transform_targets}.")
-    
+    print(f"[INFO] process_saes = {process_saes}.")
+    print(f"[INFO] transform_targets = {transform_targets}.")
+
     metrics = {
         "regression": {
             "RMSE": lambda y_true, y_pred: mean_squared_error(
@@ -310,6 +313,14 @@ if __name__ == "__main__":
         for dataset_name in dataset_names:
             print(f"Processing {dataset_name}...")
 
+            if "gemma" in model_name:
+                nr_layers = 26
+            elif "Qwen" in model_name:
+                nr_layers = 36
+            elif "Llama" in model_name:
+                nr_layers = 16
+            print(f"[DEBUG] 'nr_layers' set to {nr_layers}.")
+
             list_probes = []
             model_objects = {}
 
@@ -336,7 +347,7 @@ if __name__ == "__main__":
                 data_type="targets",
             )
 
-            for token_pos in token_pos:
+            for token_pos in token_pos_all:
 
                 # Prepare the features.
                 acts_cache = acts[f"activations_cache{token_pos}"]

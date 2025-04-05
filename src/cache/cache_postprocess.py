@@ -14,7 +14,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--nr_layers", type=int, default=26, help="Number of layers.")
     parser.add_argument(
-        "--save_cache_key", type=str, default="3000_", help="Save key for the cache."
+        "--save_cache_key", type=str, default="3000", help="Save key for the cache."
     )
     parser.add_argument(
         "--save_dir",
@@ -27,9 +27,10 @@ if __name__ == "__main__":
         nargs="+",
         default=[
             "sentiment_analysis",
-            # "mmlu_high_school",
-            # "sms_spam",
-            # "yes_no_question",
+             "mmlu_high_school",
+            # "mmlu_professional",
+             "sms_spam",
+             "yes_no_question",
         ],
         help="Task names.",
     )
@@ -37,12 +38,12 @@ if __name__ == "__main__":
         "--model_names",
         nargs="+",
         default=[
-            "google/gemma-2-2b-it",
-            "google/gemma-2-2b",
-            "meta-llama/Llama-3.2-1B-Instruct",
-            "meta-llama/Llama-3.2-1B",
-            "Qwen/Qwen2.5-3B-Instruct",
-            "Qwen/Qwen2.5-3B",
+             "google/gemma-2-2b-it",
+             "google/gemma-2-2b",
+             "meta-llama/Llama-3.2-1B-Instruct",
+             "meta-llama/Llama-3.2-1B",
+             "Qwen/Qwen2.5-3B-Instruct",
+             "Qwen/Qwen2.5-3B",
         ],
         help="Models to include (e.g., Qwen/Qwen2.5-3B-Instruct).",
     )
@@ -100,14 +101,14 @@ if __name__ == "__main__":
                 if layer == 0:
 
                     with open(
-                        f"{file_path_cache}{save_cache_key}completions.pkl", "rb"
+                        f"{file_path_cache}{save_cache_key}_completions.pkl", "rb"
                     ) as f:
                         completions = pickle.load(
                             f
                         )  # torch.load(f, map_location="cuda:0")
 
                     with open(
-                        f"{file_path_cache}{save_cache_key}targets.pkl", "rb"
+                        f"{file_path_cache}{save_cache_key}_targets.pkl", "rb"
                     ) as f:
                         targets = pickle.load(f)  # torch.load(f, map_location="cuda:0")
 
@@ -124,14 +125,14 @@ if __name__ == "__main__":
                 # Read inputs.
                 if process_saes:
                     with open(
-                        f"{file_path_cache}saes/{save_cache_key.replace('parse', '')}sae_{layer}.pkl",
+                        f"{file_path_cache}saes/{save_cache_key.replace('parse', '')}_sae_{layer}.pkl",
                         "rb",
                     ) as f:
                         sae_layer = pickle.load(
                             f
                         )  # sae_layer = torch.load(f, map_location="cuda:0")#
                 with open(
-                    f"{file_path_cache}activations/{save_cache_key.replace('parse', '')}activations_{layer}.pkl",
+                    f"{file_path_cache}activations/{save_cache_key.replace('parse', '')}_activations_{layer}.pkl",
                     "rb",
                 ) as f:
                     act_layer = pickle.load(
@@ -209,7 +210,7 @@ if __name__ == "__main__":
             results[task_name]["y_error_ce_exact"] = y_error_ce_exact
 
             k = "_with_saes" if process_saes else ""
-            file_path_save = f"{save_dir}/{task_name}/{model_name.split('/')[1]}/{save_cache_key}acts{k}.pkl"
+            file_path_save = f"{save_dir}/{task_name}/{model_name.split('/')[1]}/{save_cache_key}_acts{k}.pkl"
 
             with open(file_path_save, "wb") as f:
                 pickle.dump(results[task_name], f)

@@ -10,29 +10,33 @@ from tasks.task_handler import *
 from cache.cache_utils import *
 from .base import *
 
-DELTA_COLS = [
-    "inner_evaluation/Delta Accuracy Last",
-    "inner_evaluation/Delta Accuracy Exact",
-    "inner_evaluation/Delta F1 Score Last",
-    "inner_evaluation/Delta F1 Score Exact",
-    "inner_evaluation/Delta Recall Last",
-    "inner_evaluation/Delta Recall Exact",
-    "inner_evaluation/Delta Precision Last",
-    "inner_evaluation/Delta Precision Exact",
-    "inner_evaluation/Delta Error Last",
-    "inner_evaluation/Delta Error Exact",
-    "inner_evaluation/Corrections Total Last",
-    "inner_evaluation/Corrections Percentage Last",
-    "inner_evaluation/Corrections Total Exact",
-    "inner_evaluation/Corrections Percentage Exact",
-    "inner_evaluation/Transitions (0->1) Last",
-    "inner_evaluation/Transitions (0->1) Exact",
-    "inner_evaluation/Transitions (0->0) Last",
-    "inner_evaluation/Transitions (0->0) Exact",
-    "inner_evaluation/Transitions (1->1) Last",
-    "inner_evaluation/Transitions (1->1) Exact",
-    "inner_evaluation/Transitions (1->0) Last",
-    "inner_evaluation/Transitions (1->0) Exact",
+APPEND_COLS = [
+    "overall_evaluation/Delta Accuracy Last",
+    "overall_evaluation/Delta Accuracy Exact",
+    "overall_evaluation/Delta F1 Score Last",
+    "overall_evaluation/Delta F1 Score Exact",
+    "overall_evaluation/Delta Recall Last",
+    "overall_evaluation/Delta Recall Exact",
+    "overall_evaluation/Delta Precision Last",
+    "overall_evaluation/Delta Precision Exact",
+    "overall_evaluation/Delta Error Last",
+    "overall_evaluation/Delta Error Exact",
+    "overall_evaluation/Corrections Total Last",
+    "overall_evaluation/Corrections Percentage Last",
+    "overall_evaluation/Corrections Total Exact",
+    "overall_evaluation/Corrections Percentage Exact",
+    "overall_evaluation/Transitions (0->1) Last",
+    "overall_evaluation/Transitions (0->1) Exact",
+    "overall_evaluation/Transitions (0->0) Last",
+    "overall_evaluation/Transitions (0->0) Exact",
+    "overall_evaluation/Transitions (1->1) Last",
+    "overall_evaluation/Transitions (1->1) Exact",
+    "overall_evaluation/Transitions (1->0) Last",
+    "overall_evaluation/Transitions (1->0) Exact",
+    "overall_evaluation/Transitions Total Last",
+    "overall_evaluation/Transitions Total Exact",
+    "overall_evaluation/SPI Last",
+    "overall_evaluation/SPI Exact",
 ]
 
 
@@ -45,7 +49,7 @@ def compute_spi(unsteered_acc: float, delta_acc: float):
         return 0
 
 
-def compute_error_metrics(targets, prefix="inner_evaluation/"):
+def compute_error_metrics(targets, prefix="overall_evaluation/"):
     """Compute error-related metrics."""
     metrics = {}
     for suffix, suffix_load in {" Last": "", " Exact": "_exact"}.items():
@@ -78,7 +82,7 @@ def compute_error_metrics(targets, prefix="inner_evaluation/"):
     return metrics
 
 
-def compute_classification_metrics(labels, targets, prefix="inner_evaluation/"):
+def compute_classification_metrics(labels, targets, prefix="overall_evaluation/"):
     """Compute classification metrics like F1-score, Recall, and Precision."""
     metrics = {}
     for suffix, suffix_load in {" Last": "", " Exact": "_exact"}.items():
@@ -102,20 +106,22 @@ def compute_transitions(
     baseline: np.ndarray, steered: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Compute all transitions from baseline to steered: 0→1, 1→0, 0→0, 1→1."""
-    baseline = np.array(baseline)
-    steered = np.array(steered)
+    baseline = np.array(baseline).astype(int)
+    steered = np.array(steered).astype(int)
+    #print(f'[DEBUG] {baseline["overall_evaluation/Correct Predictions Last"].shape}')
+    #print(f'[DEBUG] {steered["overall_evaluation/Correct Predictions Last"].shape}')
     return (
-        (baseline == 0) & (steered == 1),  # Recovery!
-        (baseline == 1) & (steered == 0),  # Regression!
-        (baseline == 0) & (steered == 0),  # Persistent Error!
-        (baseline == 1) & (steered == 1),  # Stability!
+        (baseline == 0) & (steered == 1),  # recovery!
+        (baseline == 1) & (steered == 0),  # regression!
+        (baseline == 0) & (steered == 0),  # persistent error!
+        (baseline == 1) & (steered == 1),  # stability!
     )
 
 
 def compute_transition_metrics(
     baseline_correct: Dict[str, np.ndarray],
     steered_correct: Dict[str, np.ndarray],
-    prefix: str = "inner_evaluation/",
+    prefix: str = "overall_evaluation/",
     suffix: str = "",
 ) -> Dict[str, float]:
     """Compute transition metrics from baseline to steered."""
@@ -129,6 +135,8 @@ def compute_transition_metrics(
             f"{prefix}Transitions (1->0){suffix}": np.mean(t_1to0),
             f"{prefix}Transitions (0->0){suffix}": np.mean(t_0to0),
             f"{prefix}Transitions (1->1){suffix}": np.mean(t_1to1),
+            f"{prefix}Transitions Total{suffix}": int(np.sum(t_0to1 + t_1to0 + t_0to0 + t_1to1)),
+
         }
     )
     return metrics
@@ -236,7 +244,6 @@ def random_sample_activations(
         key: arr[np.random.choice(arr.shape[0], k, replace=False)]
         for key, arr in data.items()
     }
-
 
 def random_sample_array(
     arr: np.ndarray, k: int, seed: int = 1234

@@ -58,13 +58,13 @@ parser.add_argument(
 parser.add_argument(
     "--model_names",
     nargs="+",
-    default=[
+    default=[        
         "google/gemma-2-2b-it",
         "google/gemma-2-2b",
-        "meta-llama/Llama-3.2-1B-Instruct",
-        # "meta-llama/Llama-3.2-1B",
-        "Qwen/Qwen2.5-3B-Instruct",
         "Qwen/Qwen2.5-3B",
+        "Qwen/Qwen2.5-3B-Instruct",
+        "meta-llama/Llama-3.2-1B",
+        "meta-llama/Llama-3.2-1B-Instruct",
     ],
     help="Models to include (e.g., Qwen/Qwen2.5-3B-Instruct).",
 )
@@ -130,6 +130,8 @@ model_names = filter_valid(SUPPORTED_MODELS, args.model_names)
 valid_methods = filter_valid(list(SUPPORTED_METHODS.values()), args.steering_methods)
 print(f"[INFO] Tasks: {dataset_names} | Models: {model_names}")
 print(f"[DEBUG] Valid methods: {valid_methods}")
+print(f"[DEBUG] Filtered datasets: {dataset_names}")
+print(f"[DEBUG] Filtered models: {model_names}")
 
 for model_name in model_names:
 
@@ -140,9 +142,9 @@ for model_name in model_names:
 
     for dataset_name in dataset_names:
 
-        ##############################
+        #################################
         ####### Load dataset_names ######
-        ##############################
+        #################################
 
         task_config = TaskConfig(
             token=hf_token,
@@ -159,7 +161,7 @@ for model_name in model_names:
         model_handler = ModelHandler(task_config)
         dataset_handler = DatasetHandler(task_config, tokenizer=model_handler.tokenizer)
         nr_layers = model_handler.nr_layers
-        nr_training_samples = 3000 if "mmlu_professional" not in dataset_name else 2602
+        nr_training_samples = 3000 if "mmlu_professional" not in dataset_name else 2601
         k = "_with_saes" if process_saes else ""
         file_path_acts = f"../runs/{dataset_name}/{model_name.split('/')[1]}/{str(nr_training_samples)}_acts{k}.pkl"
         file_path_probes = (
@@ -171,8 +173,9 @@ for model_name in model_names:
         os.makedirs(save_dir, exist_ok=True)
         save_key = f"{fname}_{task_config.nr_test_samples}"
         file_path_single_run = f"{save_dir}{save_key}_method.pkl"
-        file_path_all_runs = f"{save_dir}{save_key}steering_all_results.pkl"
+        file_path_all_runs = f"{save_dir}{save_key}_steering_all_results.pkl"
 
+        print(f"[INFO] Steering {model_name} | {dataset_name}")
         print(
             f"[INFO] nr samples (test, cal) ({task_config.nr_test_samples}, {task_config.nr_ref_samples})"
         )
@@ -234,6 +237,7 @@ for model_name in model_names:
         tasks_metrics = {"regression": "RMSE", "classification": "AUCROC"}
         steering_options = ["best", "worst", "median"]
 
+        print(f"[INFO] Steering {model_name} | {dataset_name}")
         probe_weights = {}
         probe_layers = {}
 
@@ -252,7 +256,7 @@ for model_name in model_names:
                         ),
                     )
                 }
-                """
+                
                 probe_layers[(task, steer_flag)] = get_best_layer(
                     df_all_probes,
                     task=task,
@@ -260,7 +264,7 @@ for model_name in model_names:
                     metric=metric,
                     mode=steer_flag,
                 )
-                """
+                
 
         sets = {
             f"{k}_sets": apply_activation_filtering(
@@ -389,7 +393,7 @@ for model_name in model_names:
                         kwargs_mera = {
                             "eta": eta,
                             "alpha_range": list(np.linspace(1e-3, 0.99, 10)),
-                            "refine_best_alpha": False,  # FIXME
+                            # "refine_best_alpha": False,  # FIXME
                             "ref_prompts": ref_prompts,
                             "ref_labels": ref_labels,
                             "derive_with_sigmoid": derive_kwargs["derive_with_sigmoid"],
@@ -457,6 +461,7 @@ for model_name in model_names:
                             kwargs_additive["probe_weights"] = probe_weights[
                                 (setting[0], setting[1])
                             ]
+                            kwargs_additive["mode"] = mode 
                             benchmark_list[method_name] = kwargs_additive
 
                         ###########################################
@@ -504,11 +509,10 @@ for model_name in model_names:
         }
         for steering_key, steering_kwargs in benchmark_list_filtered.items():
             all_keys.update(steering_kwargs.keys())
-        all_keys.update(DELTA_COLS)
+        all_keys.update([k.replace("overall_evaluation/", "") for k in APPEND_COLS])
 
         print("\n[INFO] Beginning benchmarking!")
         overall_baseline = None
-        # errors_baselines = (None, None)
         first_result = True
 
         ####################################
@@ -533,7 +537,7 @@ for model_name in model_names:
             },
         )
 
-        for steering_key, steering_kwargs in benchmark_list_filtered.items():
+        for ix, (steering_key, steering_kwargs) in enumerate(benchmark_list_filtered.items()):
 
             # if steering_key.startswith(("no_steering", "prompt_steering")): # FIXME
             #    continue
@@ -555,7 +559,7 @@ for model_name in model_names:
                 ["last", "exact"] if requires_dual_alpha else ["single"]
             )
 
-            # Looping over different evaluation targets.
+            # Looping over different evaluation targets (last or exact mode).
             for alpha_calibration_token_pos_target in calibration_targets:
 
                 # if steering_kwargs.get("apply_token_pos_to_steer", "") == "generation" and alpha_calibration_token_pos_target == "last":
@@ -644,9 +648,17 @@ for model_name in model_names:
                             "Precision Exact",
                             "Error Exact",
                             "Correct Predictions Exact",
+                            #"Transitions (0->1) Last",
+                            #"Transitions (0->1) Exact",
+                            #"Transitions (0->0) Last",
+                            #"Transitions (0->0) Exact",
+                            #"Transitions (1->1) Last",
+                            #"Transitions (1->1) Exact",
+                            #"Transitions (1->0) Last",
+                            #"Transitions (1->0) Exact",
                         ]
                     }
-                    overall_baseline.update({k: 0.0 for k in DELTA_COLS})
+                    overall_baseline.update({k: 0.0 for k in APPEND_COLS})
                     print(f"[INFO] Baseline metrics set: {overall_baseline}")
                     evaluation_metrics_baseline = deepcopy(evaluation_metrics)
                 else:
@@ -655,6 +667,7 @@ for model_name in model_names:
                         overall_baseline,
                         steering_key_with_target,
                         alpha_calibration_token_pos_target,
+                        prefix="overall_evaluation/",
                     )
 
                 # Post-processing and logging.
@@ -681,7 +694,7 @@ for model_name in model_names:
                     **evaluation_metrics,
                 }
                 # Some processing.
-                excludes = [ "_ref", "probe_weights", "inner_evaluation"] # "Correct",
+                excludes = ["ref_", "probe_weights", "inner_evaluation"] # "Correct", 
                 single_results = {k: v for k, v in single_results.items() if not any(ex in k for ex in excludes)}
 
                 # Print results.
@@ -731,6 +744,8 @@ for model_name in model_names:
 
         # Logging!
         wandb.log({"overall_evaluation_results_table": results_table})
+    
+        # Finish wandb.
         wandb.finish()
 
     with open(file_path_all_runs, "wb") as f:

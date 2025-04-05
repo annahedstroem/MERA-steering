@@ -25,6 +25,7 @@ SUPPORTED_TASKS = [
     "sentiment_analysis",
     "yes_no_question",
     "mmlu_high_school",
+    "mmlu_professional",
     "sms_spam",
 ]
 

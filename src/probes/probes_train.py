@@ -199,8 +199,8 @@ if __name__ == "__main__":
         default=[
             # "sentiment_analysis",
             # "mmlu_high_school",
-            "mmlu_professional",
-            # "sms_spam",
+            # "mmlu_professional",
+             "sms_spam",
             # "yes_no_question",
         ],
         help="Task names.",
@@ -209,13 +209,12 @@ if __name__ == "__main__":
         "--model_names",
         nargs="+",
         default=[
-            "google/gemma-2-2b-it",
-            "meta-llama/Llama-3.2-1B-Instruct",
-            "meta-llama/Llama-3.2-1B",
             "Qwen/Qwen2.5-3B",
             "Qwen/Qwen2.5-3B-Instruct",
-            "google/gemma-2-2b", 
-            
+            #"meta-llama/Llama-3.2-1B-Instruct",
+            #"meta-llama/Llama-3.2-1B",
+            #"google/gemma-2-2b-it",
+            # "google/gemma-2-2b", 
         ],
         help="Models to include (e.g., Qwen/Qwen2.5-3B-Instruct).",
     )

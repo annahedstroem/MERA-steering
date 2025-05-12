@@ -23,14 +23,14 @@ if __name__ == "__main__":
         help="Save directory to retrieve the cache.",
     )
     parser.add_argument(
-        "--task_names",
+        "--dataset_names",
         nargs="+",
         default=[
-            "sentiment_analysis",
-             "mmlu_high_school",
+            # "sentiment_analysis",
+            # "mmlu_high_school",
             # "mmlu_professional",
              "sms_spam",
-             "yes_no_question",
+            # "yes_no_question",
         ],
         help="Task names.",
     )
@@ -38,12 +38,12 @@ if __name__ == "__main__":
         "--model_names",
         nargs="+",
         default=[
-             "google/gemma-2-2b-it",
-             "google/gemma-2-2b",
-             "meta-llama/Llama-3.2-1B-Instruct",
-             "meta-llama/Llama-3.2-1B",
+             #"google/gemma-2-2b-it",
+             #"meta-llama/Llama-3.2-1B-Instruct",
+             #"meta-llama/Llama-3.2-1B",
              "Qwen/Qwen2.5-3B-Instruct",
              "Qwen/Qwen2.5-3B",
+             #"google/gemma-2-2b", # didnwork for sentiment ?
         ],
         help="Models to include (e.g., Qwen/Qwen2.5-3B-Instruct).",
     )
@@ -57,10 +57,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(f"Arguments: {args}")
 
-    process_saes, nr_layers, task_names, save_cache_key, save_dir = (
+    process_saes, nr_layers, dataset_names, save_cache_key, save_dir = (
         args.process_saes.lower() == "true",
         args.nr_layers,
-        args.task_names,
+        args.dataset_names,
         args.save_cache_key,
         args.save_dir,
     )
@@ -71,8 +71,8 @@ if __name__ == "__main__":
     for model_name in model_names:
         print(f"Processing {model_name}...")
 
-        for task_name in task_names:
-            print(f"Processing {task_name}...")
+        for dataset_name in dataset_names:
+            print(f"Processing {dataset_name}...")
 
             if process_saes:
                 sae_enc_layers_data = {}
@@ -82,9 +82,9 @@ if __name__ == "__main__":
 
             act_layer_data = {}
             act_layer_data_exact = {}
-            results[task_name] = {}
+            results[dataset_name] = {}
 
-            file_path_cache = f"{save_dir}/{task_name}/{model_name.split('/')[1]}/"
+            file_path_cache = f"{save_dir}/{dataset_name}/{model_name.split('/')[1]}/"
 
             if "gemma" in model_name:
                 nr_layers = 26
@@ -95,7 +95,7 @@ if __name__ == "__main__":
             print(f"[DEBUG] 'nr_layers' set to {nr_layers}.")
 
             for layer in tqdm(
-                range(nr_layers), desc=f"Processing Layers for {task_name}"
+                range(nr_layers), desc=f"Processing Layers for {dataset_name}"
             ):
 
                 if layer == 0:
@@ -193,24 +193,24 @@ if __name__ == "__main__":
                     del sae_layer
                 del act_layer
 
-            results[task_name]["activations_cache"] = act_layer_data
+            results[dataset_name]["activations_cache"] = act_layer_data
             if process_saes:
-                results[task_name]["sae_enc_cache"] = sae_enc_layers_data
-                results[task_name]["sae_dec_cache"] = sae_dec_layers_data
-            results[task_name]["y_correct"] = y_correct
-            results[task_name]["y_error_sm"] = y_error_sm
-            results[task_name]["y_error_ce"] = y_error_ce
+                results[dataset_name]["sae_enc_cache"] = sae_enc_layers_data
+                results[dataset_name]["sae_dec_cache"] = sae_dec_layers_data
+            results[dataset_name]["y_correct"] = y_correct
+            results[dataset_name]["y_error_sm"] = y_error_sm
+            results[dataset_name]["y_error_ce"] = y_error_ce
 
-            results[task_name]["activations_cache_exact"] = act_layer_data_exact
+            results[dataset_name]["activations_cache_exact"] = act_layer_data_exact
             if process_saes:
-                results[task_name]["sae_enc_cache_exact"] = sae_enc_layers_data_exact
-                results[task_name]["sae_dec_cache_exact"] = sae_dec_layers_data_exact
-            results[task_name]["y_correct_exact"] = y_correct_exact
-            results[task_name]["y_error_sm_exact"] = y_error_sm_exact
-            results[task_name]["y_error_ce_exact"] = y_error_ce_exact
+                results[dataset_name]["sae_enc_cache_exact"] = sae_enc_layers_data_exact
+                results[dataset_name]["sae_dec_cache_exact"] = sae_dec_layers_data_exact
+            results[dataset_name]["y_correct_exact"] = y_correct_exact
+            results[dataset_name]["y_error_sm_exact"] = y_error_sm_exact
+            results[dataset_name]["y_error_ce_exact"] = y_error_ce_exact
 
             k = "_with_saes" if process_saes else ""
-            file_path_save = f"{save_dir}/{task_name}/{model_name.split('/')[1]}/{save_cache_key}_acts{k}.pkl"
+            file_path_save = f"{save_dir}/{dataset_name}/{model_name.split('/')[1]}/{save_cache_key}_acts{k}.pkl"
 
             with open(file_path_save, "wb") as f:
-                pickle.dump(results[task_name], f)
+                pickle.dump(results[dataset_name], f)

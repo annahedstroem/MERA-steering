@@ -22,6 +22,7 @@ def main(
     dataset_names: List[str],
     nr_samples: int,
     batch_size: int,
+    device: str,
     n_devices: int,
     run_acts: bool,
     run_saes: bool,
@@ -39,7 +40,7 @@ def main(
             dataset_name=dataset_name,
             nr_samples=nr_samples,
             model_name=model_name,
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            device=device if device != "" else None,
             nr_devices=n_devices,
             flexible_match=flexible_match,
             batch_size=batch_size,
@@ -181,18 +182,17 @@ if __name__ == "__main__":
         "--model_name",
         type=str,
         default="google/gemma-2-2b-it",
-        help="Name of the model to load.",
-    )
+        help="Name of the model to load.",   )
     parser.add_argument(
         "--dataset_names",
         type=str,
         nargs="+",
         default=[
-            "sentiment_analysis",
-            "mmlu_high_school",
+            # "sentiment_analysis",
+            # "mmlu_high_school",
             # "mmlu_professional",
-            # "sms_spam",
-            "yes_no_question",
+             "sms_spam",
+            # "yes_no_question",
         ],
         help="Name(s) of the task(s) to load. Provide a single name or a space-separated list.",
     )
@@ -227,6 +227,12 @@ if __name__ == "__main__":
         action=argparse.BooleanOptionalAction,
         help="If run_saes existing results.",
     )
+    parser.add_argument(
+    "--device",
+    type=str,
+    default="",
+    help="Device for single GPU use (default: cuda:0).",
+)
 
     args = parser.parse_args()
 
@@ -239,6 +245,7 @@ if __name__ == "__main__":
         args.dataset_names,
         args.nr_samples,
         args.batch_size,
+        args.device,
         args.n_devices,
         args.run_acts,
         args.run_saes,

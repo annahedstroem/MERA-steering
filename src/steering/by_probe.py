@@ -98,10 +98,10 @@ class SteeringByProbe(Steering):
             )
 
         if self.mode == "multiplicative_probe":
-            return activations * self.lmbda * -self.probe_weights[layer_idx]
+            return activations * self.lmbda * -self.probe_weights[layer_idx].to(activations.device) # FIXME — maybe this is wrong
 
         elif self.mode == "additive_probe":
-            return activations + self.lmbda * -self.probe_weights[layer_idx]
+            return activations + self.lmbda * -self.probe_weights[layer_idx].to(activations.device) # FIXME — maybe this is wrong
 
         print(
             "[DEBUG] Returning unsteered activations, as no 'mode' matched the implementation."

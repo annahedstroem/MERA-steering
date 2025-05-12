@@ -196,11 +196,12 @@ class TaskConfig:
         self.model_kwargs = self.model_kwargs or {
             "token": self.token,
             "cache_dir": self.cache_dir,
-            "device_map": "auto",
+            #"device_map": "auto",
+            "device_map": {"": self.device} if self.device is not None else "auto",
             "offload_folder": f"{self.cache_dir}/offload/",
             # "pad_token_id": tokenizer.eos_token_id,
             # "torch_dtype": torch.float16,
-            # "device": self.device,
+            # "device": self.device,s
             # "nr_devices": self.nr_devices,
         }
         self.tokenizer_kwargs = self.tokenizer_kwargs or {
@@ -356,7 +357,7 @@ class DatasetHandler:
         )
 
     def _get_prompts(self, samples):
-        if self.config.dataset_name == "finance-instruct":
+        if self.config.dataset_name_hf == "finance-instruct":
             return [s["inputs"] + " " for s in samples]
         prompts = []
 

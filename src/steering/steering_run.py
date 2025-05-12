@@ -41,6 +41,12 @@ parser.add_argument(
     help="Filename identifier (default: custom_experiment).",
 )
 parser.add_argument(
+    "--device",
+    type=str,
+    default="",
+    help="Device for single GPU use (default: cuda:0).",
+)
+parser.add_argument(
     "--wandb_key", type=str, default="private", help="Weights & Biases API key."
 )
 parser.add_argument(
@@ -59,20 +65,20 @@ parser.add_argument(
     "--model_names",
     nargs="+",
     default=[        
-        "google/gemma-2-2b-it",
-        "google/gemma-2-2b",
+        #"google/gemma-2-2b-it",
+        #"google/gemma-2-2b",
+        #"meta-llama/Llama-3.2-1B",
+        #"meta-llama/Llama-3.2-1B-Instruct",
         "Qwen/Qwen2.5-3B",
         "Qwen/Qwen2.5-3B-Instruct",
-        "meta-llama/Llama-3.2-1B",
-        "meta-llama/Llama-3.2-1B-Instruct",
     ],
     help="Models to include (e.g., Qwen/Qwen2.5-3B-Instruct).",
 )
 parser.add_argument(
     "--top_k_sets",
     nargs="+",
-    default=[50, 100],
-    help="Top k constrastive pairs sets (e.g., 50 100).",
+    default=[50, 100, 200],
+    help="Top k constrastive pairs sets (e.g., 50 100, 200).",
 )
 parser.add_argument(
     "--probe_token_pos",
@@ -123,6 +129,7 @@ objective_key = args.objective_key
 probe_file_name = args.probe_file_name
 nr_test_samples = args.nr_test_samples
 nr_ref_samples = args.nr_ref_samples
+device = args.device
 
 # Apply validation (if no args, use all)!
 dataset_names = filter_valid(SUPPORTED_TASKS, args.dataset_names)
@@ -151,7 +158,7 @@ for model_name in model_names:
             cache_dir="../hf-cache/",
             dataset_name=dataset_name,
             model_name=model_name,
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            device=device if device != "" else None, #torch.device("cuda" if torch.cuda.is_available() else "cpu"),
             nr_devices=5,
             batch_size=1,
             nr_test_samples=nr_test_samples,

@@ -15,21 +15,22 @@ This repository contains the code and experiments for the paper **["To Steer or 
 <!--[![Launch Tutorials](https://mybinder.org/badge_logo.svg)](anonymous)-->
 
 Please note that this repository is under active development!
-<!--
+
 ## Citation
 
 If you find this work interesting or useful in your research, use the following Bibtex annotation to cite us:
 
 ```bibtex
-@article{mera2025steering,
-    title={To Steer or Not to Steer? Mechanistic Error Reduction with Abstention for Language Models},
-    author={},
-    journal={},
-    year={},
-    url={},
+@inproceedings{
+mera2025steering,
+title={To Steer or Not to Steer? Mechanistic Error Reduction with Abstention for Language Models},
+author={Hedstr{\"o}m, Anna, and Amoukou, Salim I. and Bewley, Tom and Mishra, Saumitra Veloso, Manuela},
+booktitle={Forty-second International Conference on Machine Learning},
+year={2025},
+url={https://openreview.net/forum?id=fUCPq5RvmH}
 }
 ```
--->
+
 <!--This work has been published ...........-->
 
 ## Repository overview
@@ -83,7 +84,7 @@ huggingface_hub
 accelerate
 wandb
 ```
-
+<!--
 ## Getting started
 
 If you want to try using MERA with your own dataset and model, go to the following notebook `nbs/getting_started.py`.
@@ -92,6 +93,7 @@ To steer with MERA on any of the existing datasets and models (see supported dat
 ```bash
 python mera.py --dataset_names yes_no_question --model_name google/gemma-2-2b
 ```
+-->
 
 ## How to reproduce experimental results
 
@@ -112,8 +114,8 @@ For each model, to prepare datasets for probe training (see supported datasets a
 
 
 ```bash
-python -m cache.cache_run --dataset_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --nr_samples 3000 --model_name meta-llama/Llama-3.2-1B-Instruct --hf_token INSERT_KEY
-python -m cache.cache_run --dataset_names mmlu_professional --nr_samples 2601 --model_name meta-llama/Llama-3.2-1B --hf_token INSERT_KEY
+python -m cache.cache_run --dataset_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --nr_samples 3000 --model_name meta-llama/Llama-3.2-1B-Instruct --hf_token INSERT_KEY device--cuda:1
+python -m cache.cache_run --dataset_names mmlu_professional --nr_samples 2601 --model_name Qwen/Qwen2.5-3B-Instruct --hf_token INSERT_KEY device--cuda:4
 ```
 
 Just rerun with the different models (see supported datasets and models [here](#supported-models-and-datasets)).
@@ -122,9 +124,8 @@ Next, post-processes the cache data (i.e., subselect activation values based on 
 
 
 ```bash
-python -m cache.cache_postprocess --dataset_names sms_spam
+python -m cache.cache_postprocess --save_cache_key 2601 --model_names "Qwen/Qwen2.5-3B-Instruct" --dataset_names mmlu_professional 
 ```
-
 
 </details>
 
@@ -133,7 +134,7 @@ For each model, to train linear probes (error estimators), run the following scr
 
 
 ```bash
-python -m probes.probes_train --dataset_names sentiment_analysis yes_no_question mmlu_high_school sms_spam --model_name meta-llama/Llama-3.2-1B-Instruct --save_name custom --transform
+python -m probes.probes_train --dataset_names sms_spam --save_name trans --transform_targets True --save_cache_key 3000
 ```
 
 if you want to change any of the hyperparameters, please edit the script `probes_train.py` directly.
@@ -147,13 +148,13 @@ For each model, to benchmark steering methods, run the following script:
 
 ```bash
 python -m steering.steering_run --steering_methods optimal_probe --dataset_names sms_spam --model_names "meta-llama/Llama-3.2-1B-Instruct" --fname custom_experiment --probe_token_pos exact --wandb_key INSERT_KEY
+
+python -m steering.steering_run --steering_methods no_steering additive_probe additive_logistic_probe vanilla_contrastive prompt_steering optimal_probe optimal_logistic_probe optimal_contrastive --dataset_names sentiment_analysis  --fname final --probe_token_pos exact --wandb_key INSERT_KEY --probe_file_name df_probes_trans --nr_test_samples 250 --nr_ref_samples 250 --device cuda:6
 ```
 
 
 To analyse the performance of the steering methods, go to the following notebook `nbs/evaluate_steering.py`.
 </details>
-
-
 
 ## Dataset and models
 

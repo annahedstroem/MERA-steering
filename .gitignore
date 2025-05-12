@@ -5,6 +5,7 @@
 external/
 runs/
 runs-copy/
+runs-old/
 src/wandb/
 nbs-private/
 assets/

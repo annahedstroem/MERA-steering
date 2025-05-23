@@ -22,12 +22,12 @@ If you find this work interesting or useful in your research, use the following 
 
 ```bibtex
 @inproceedings{
-mera2025steering,
-title={To Steer or Not to Steer? Mechanistic Error Reduction with Abstention for Language Models},
-author={Hedstr{\"o}m, Anna, and Amoukou, Salim I. and Bewley, Tom and Mishra, Saumitra Veloso, Manuela},
-booktitle={Forty-second International Conference on Machine Learning},
-year={2025},
-url={https://openreview.net/forum?id=fUCPq5RvmH}
+    mera2025steering,
+    title={To Steer or Not to Steer? Mechanistic Error Reduction with Abstention for Language Models},
+    author={Hedstr{\"o}m, Anna, and Amoukou, Salim I. and Bewley, Tom and Mishra, Saumitra Veloso, Manuela},
+    booktitle={Forty-second International Conference on Machine Learning},
+    year={2025},
+    url={https://openreview.net/forum?id=fUCPq5RvmH}
 }
 ```
 

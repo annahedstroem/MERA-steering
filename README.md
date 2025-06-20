@@ -22,16 +22,16 @@ If you find this work interesting or useful in your research, use the following 
 
 ```bibtex
 @inproceedings{
-    mera2025steering,
-    title={To Steer or Not to Steer? Mechanistic Error Reduction with Abstention for Language Models},
-    author={Hedstr{\"o}m, Anna, and Amoukou, Salim I. and Bewley, Tom and Mishra, Saumitra Veloso, Manuela},
-    booktitle={Forty-second International Conference on Machine Learning},
-    year={2025},
-    url={https://openreview.net/forum?id=fUCPq5RvmH}
+  hedstrom2025to,
+  title={To Steer or Not to Steer? Mechanistic Error Reduction with Abstention for Language Models},
+  author={Anna Hedstr{\"o}m and Salim I. Amoukou and Tom Bewley and Saumitra Mishra and Manuela Veloso},
+  booktitle={Forty-second International Conference on Machine Learning},
+  year={2025},
+  url={https://openreview.net/forum?id=fUCPq5RvmH}
 }
 ```
 
-<!--This work has been published ...........-->
+This work has been published in International Conference on Machine Learning (ICML) 2025.
 
 ## Repository overview
 
@@ -93,7 +93,6 @@ To steer with MERA on any of the existing datasets and models (see supported dat
 ```bash
 python mera.py --dataset_names yes_no_question --model_name google/gemma-2-2b
 ```
--->
 
 ## How to reproduce experimental results
 
@@ -156,6 +155,7 @@ python -m steering.steering_run --steering_methods no_steering additive_probe ad
 To analyse the performance of the steering methods, go to the following notebook `nbs/evaluate_steering.py`.
 </details>
 
+
 ## Dataset and models
 
 #### How to download datasets
@@ -179,6 +179,7 @@ Our experiments work with these models:
 - `meta-llama/Llama-3.2-1B-Instruct`
 - 
 ... but other `HuggingFace` decoder-only LM models that contain blocks with a residual stream would be compatible with our current implementation (see `register_hooks`  in [here](https://github.com/annahedstroem/MERA-steering/blob/main/src/cache/cache_utils.py#L217)).
+-->
 
 ### Thank you
 

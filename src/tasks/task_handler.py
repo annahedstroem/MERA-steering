@@ -9,8 +9,6 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import concatenate_datasets
 from utils import *
 
-hf_token = "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"
-
 
 def generate_text_variants(word: str, remove_lower: bool = False) -> list:
     transformations = [word.lower(), word.upper(), word.capitalize()]

@@ -84,7 +84,7 @@ huggingface_hub
 accelerate
 wandb
 ```
-<!--
+
 ## Getting started
 
 If you want to try using MERA with your own dataset and model, go to the following notebook `nbs/getting_started.py`.
@@ -177,9 +177,8 @@ Our experiments work with these models:
 - `Qwen/Qwen2.5-3B-Instruct`
 - `meta-llama/Llama-3.2-1B`
 - `meta-llama/Llama-3.2-1B-Instruct`
-- 
 ... but other `HuggingFace` decoder-only LM models that contain blocks with a residual stream would be compatible with our current implementation (see `register_hooks`  in [here](https://github.com/annahedstroem/MERA-steering/blob/main/src/cache/cache_utils.py#L217)).
--->
+
 
 ### Thank you
 
